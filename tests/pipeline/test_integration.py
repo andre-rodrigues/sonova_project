@@ -17,9 +17,10 @@ from src.ingest.bronze_loader import load_all_bronze, validate_contract_definiti
 from src.transform.dq_checks import run_all_checks
 from src.transform.dimensions import (
     build_dim_department,
-    build_dim_employee,
     build_dim_job,
     build_dim_location,
+    build_internal_dim_employee,
+    build_restricted_dim_employee,
 )
 from src.transform.facts import build_fact_absence, build_fact_hr_tickets
 from src.serve.gold_views import (
@@ -69,14 +70,14 @@ def dim_employee_internal(clean_dfs, contracts):
     os.environ.setdefault("PIPELINE_HMAC_SECRET", _HMAC_SECRET.decode())
     secret = _HMAC_SECRET
     personal = clean_dfs.get("successfactors/employee_personal", pd.DataFrame())
-    internal, _ = build_dim_employee(
+    restricted = build_restricted_dim_employee(
         clean_dfs["successfactors/employees"],
         clean_dfs["successfactors/employee_job"],
         personal,
         contracts,
         secret,
     )
-    return internal
+    return build_internal_dim_employee(restricted)
 
 
 # ---------------------------------------------------------------------------

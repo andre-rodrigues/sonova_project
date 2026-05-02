@@ -7,6 +7,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from src.utils import now_utc
+
 logger = logging.getLogger(__name__)
 
 _EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}$")
@@ -15,16 +17,12 @@ _INVALID_PHONES = {"INVALID_NUMBER", "+00 000 0000000"}
 _QUARANTINE_COLS = ["dq_rule_id", "dq_reason", "dq_source_table", "dq_detected_at"]
 
 
-def _now_utc() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _stamp(df: pd.DataFrame, rule_id: str, reason: str, source_table: str) -> pd.DataFrame:
     out = df.copy()
     out["dq_rule_id"] = rule_id
     out["dq_reason"] = reason
     out["dq_source_table"] = source_table
-    out["dq_detected_at"] = _now_utc()
+    out["dq_detected_at"] = now_utc()
     return out
 
 

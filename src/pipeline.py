@@ -21,9 +21,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import duckdb
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 import yaml
 
 from src.ingest.bronze_loader import (
@@ -34,9 +33,10 @@ from src.ingest.bronze_loader import (
 from src.transform.dq_checks import run_all_checks
 from src.transform.dimensions import (
     build_dim_department,
-    build_dim_employee,
     build_dim_job,
     build_dim_location,
+    build_internal_dim_employee,
+    build_restricted_dim_employee,
 )
 from src.transform.facts import build_fact_absence, build_fact_hr_tickets
 from src.transform.governance import load_hmac_secret
@@ -72,11 +72,14 @@ _DIR_PERMISSIONS: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 def _write_parquet(df: pd.DataFrame, path: Path) -> None:
-    """Atomic write: write to .tmp then rename."""
+    """Write DataFrame to Parquet using DuckDB COPY TO."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".parquet.tmp")
-    pq.write_table(pa.Table.from_pandas(df, preserve_index=False), tmp)
-    tmp.rename(path)
+    con = duckdb.connect()
+    try:
+        con.register("_df", df)
+        con.execute(f"COPY _df TO '{path}' (FORMAT PARQUET)")
+    finally:
+        con.close()
 
 
 def _write_audit(run_id: str, started_at: str, payload: dict) -> None:
@@ -134,14 +137,15 @@ def _stage3_silver_dims(
     internal = OUTPUT_DIR / "silver" / "internal"
     restricted = OUTPUT_DIR / "silver" / "restricted"
 
-    dim_emp_int, dim_emp_res = build_dim_employee(
+    dim_emp_res = build_restricted_dim_employee(
         clean_dfs["successfactors/employees"],
         clean_dfs["successfactors/employee_job"],
         clean_dfs.get("successfactors/employee_personal", pd.DataFrame()),
         contracts, secret,
     )
-    _write_parquet(dim_emp_int, internal / "dim_employee.parquet")
     _write_parquet(dim_emp_res, restricted / "dim_employee.parquet")
+    dim_emp_int = build_internal_dim_employee(dim_emp_res)
+    _write_parquet(dim_emp_int, internal / "dim_employee.parquet")
 
     dim_dept = build_dim_department(clean_dfs["successfactors/departments"], contracts)
     _write_parquet(dim_dept, internal / "dim_department.parquet")

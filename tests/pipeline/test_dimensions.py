@@ -7,9 +7,10 @@ import pytest
 
 from src.transform.dimensions import (
     build_dim_department,
-    build_dim_employee,
     build_dim_job,
     build_dim_location,
+    build_internal_dim_employee,
+    build_restricted_dim_employee,
 )
 
 _NS = uuid.NAMESPACE_OID
@@ -109,19 +110,25 @@ def contracts():
 # ---------------------------------------------------------------------------
 
 def test_dim_employee_one_row_per_job_period(employees_df, job_df, personal_df, contracts):
-    internal, _ = build_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    )
     assert len(internal) == 3  # one per job entry
 
 
 def test_dim_employee_scd2_grain_multi_period(multi_period_employees, multi_period_jobs, contracts):
     personal = pd.DataFrame({"employee_id": ["EMP019"], "date_of_birth": pd.to_datetime(["1988-04-01"]),
                               "national_id": ["X"], "national_id_type": ["AHV"], "last_modified": pd.to_datetime(["2024-12-01"])})
-    internal, _ = build_dim_employee(multi_period_employees, multi_period_jobs, personal, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(multi_period_employees, multi_period_jobs, personal, contracts, _SECRET)
+    )
     assert len(internal) == 3
 
 
 def test_dim_employee_effective_dates_populated(employees_df, job_df, personal_df, contracts):
-    internal, _ = build_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    )
     assert "effective_from" in internal.columns
     assert "effective_to" in internal.columns
 
@@ -155,13 +162,17 @@ def test_dim_employee_terminated_effective_to_set(contracts):
     )
     personal = pd.DataFrame({"employee_id": ["EMP017"], "date_of_birth": pd.to_datetime(["1978-11-05"]),
                               "national_id": ["X"], "national_id_type": ["FR"], "last_modified": pd.to_datetime(["2024-12-01"])})
-    internal, _ = build_dim_employee(employees, jobs, personal, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(employees, jobs, personal, contracts, _SECRET)
+    )
     expected_to = pd.Timestamp("2024-06-29")
     assert pd.to_datetime(internal.iloc[0]["effective_to"]) == expected_to
 
 
 def test_dim_employee_active_is_current_true(employees_df, job_df, personal_df, contracts):
-    internal, _ = build_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    )
     emp001 = internal[internal["department_id"] == "D01"]
     assert emp001.iloc[0]["is_current"] == True
 
@@ -194,14 +205,18 @@ def test_dim_employee_terminated_is_current_false(contracts):
     )
     personal = pd.DataFrame({"employee_id": ["EMP017"], "date_of_birth": pd.to_datetime(["1978-11-05"]),
                               "national_id": ["X"], "national_id_type": ["FR"], "last_modified": pd.to_datetime(["2024-12-01"])})
-    internal, _ = build_dim_employee(employees, jobs, personal, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(employees, jobs, personal, contracts, _SECRET)
+    )
     assert internal.iloc[0]["is_current"] == False
 
 
 def test_dim_employee_nk_stable_across_periods(multi_period_employees, multi_period_jobs, contracts):
     personal = pd.DataFrame({"employee_id": ["EMP019"], "date_of_birth": pd.to_datetime(["1988-04-01"]),
                               "national_id": ["X"], "national_id_type": ["AHV"], "last_modified": pd.to_datetime(["2024-12-01"])})
-    internal, _ = build_dim_employee(multi_period_employees, multi_period_jobs, personal, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(multi_period_employees, multi_period_jobs, personal, contracts, _SECRET)
+    )
     nks = internal["employee_nk"].unique()
     assert len(nks) == 1
     expected_nk = str(uuid.uuid5(_NS, "EMP019"))
@@ -211,18 +226,24 @@ def test_dim_employee_nk_stable_across_periods(multi_period_employees, multi_per
 def test_dim_employee_sk_unique_across_periods(multi_period_employees, multi_period_jobs, contracts):
     personal = pd.DataFrame({"employee_id": ["EMP019"], "date_of_birth": pd.to_datetime(["1988-04-01"]),
                               "national_id": ["X"], "national_id_type": ["AHV"], "last_modified": pd.to_datetime(["2024-12-01"])})
-    internal, _ = build_dim_employee(multi_period_employees, multi_period_jobs, personal, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(multi_period_employees, multi_period_jobs, personal, contracts, _SECRET)
+    )
     assert internal["employee_sk"].nunique() == 3
 
 
 def test_dim_employee_no_pii_in_internal(employees_df, job_df, personal_df, contracts):
-    internal, _ = build_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    )
     for col in ("employee_id", "national_id", "national_id_type"):
         assert col not in internal.columns, f"PII column '{col}' must not appear in internal"
 
 
 def test_dim_employee_birth_year_in_internal(employees_df, job_df, personal_df, contracts):
-    internal, _ = build_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    internal = build_internal_dim_employee(
+        build_restricted_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    )
     assert "birth_year" in internal.columns
     assert "date_of_birth" not in internal.columns
     emp001 = internal.dropna(subset=["birth_year"]).iloc[0]
@@ -230,7 +251,7 @@ def test_dim_employee_birth_year_in_internal(employees_df, job_df, personal_df, 
 
 
 def test_dim_employee_national_id_pseudonymised_in_restricted(employees_df, job_df, personal_df, contracts):
-    _, restricted = build_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    restricted = build_restricted_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
     assert "national_id" in restricted.columns
     raw_values = {"756.1234.5678.90", "AB123456C", "1234567890123"}
     for val in restricted["national_id"].dropna():
@@ -239,7 +260,7 @@ def test_dim_employee_national_id_pseudonymised_in_restricted(employees_df, job_
 
 
 def test_dim_employee_restricted_has_employee_id(employees_df, job_df, personal_df, contracts):
-    _, restricted = build_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
+    restricted = build_restricted_dim_employee(employees_df, job_df, personal_df, contracts, _SECRET)
     assert "employee_id" in restricted.columns
 
 

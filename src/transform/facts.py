@@ -11,92 +11,19 @@ import uuid
 import pandas as pd
 
 from src.transform.governance import redact_free_text
+from src.utils import duck_query
 
 _NS = uuid.NAMESPACE_OID
 
-_TICKET_DROP_COLS = ["caller_employee_id", "_ingested_at", "_source_file"]
-_ABSENCE_DROP_COLS = ["notes", "employee_id", "_ingested_at", "_source_file"]
-
-
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
 
 def _employee_nk(employee_id: str) -> str:
     """Deterministic UUID5 natural key for an employee_id."""
     return str(uuid.uuid5(_NS, str(employee_id)))
 
 
-def _resolve_employee_sks(
-    employee_ids: pd.Series,
-    event_dates: pd.Series,
-    dim_employee: pd.DataFrame,
-) -> pd.Series:
-    """Vectorised SCD2 resolution: returns employee_sk for each (id, event_date) pair."""
-    orig_index = employee_ids.index
-    fact = pd.DataFrame(
-        {
-            "_idx": orig_index,
-            "employee_nk": employee_ids.apply(
-                lambda eid: _employee_nk(eid) if pd.notna(eid) else None
-            ),
-            "event_date": pd.to_datetime(event_dates, errors="coerce"),
-        }
-    )
-    dim_slim = dim_employee[["employee_nk", "employee_sk", "effective_from", "effective_to"]].copy()
-    merged = fact.merge(dim_slim, on="employee_nk", how="left")
-
-    ed = pd.to_datetime(merged["event_date"])
-    ef = pd.to_datetime(merged["effective_from"])
-    et = pd.to_datetime(merged["effective_to"])
-    in_period = (ef <= ed) & (et.isna() | (et >= ed))
-
-    resolved = (
-        merged[in_period]
-        .drop_duplicates(subset=["_idx"], keep="first")
-        .set_index("_idx")["employee_sk"]
-    )
-    result = pd.Series(None, index=orig_index, dtype=object)
-    result.update(resolved)
-    return result
-
-
-def _mask_sensitive_absences(
-    df: pd.DataFrame,
-    sensitive_type_ids: list[str],
-) -> pd.DataFrame:
-    """Replace sensitive absence_type_id values with a boolean flag; nullify the id."""
-    out = df.copy()
-    is_sensitive = out["absence_type_id"].isin(sensitive_type_ids)
-    out["is_sensitive_absence"] = is_sensitive
-    out.loc[is_sensitive, "absence_type_id"] = None
-    return out
-
-
 def _redact_column(series: pd.Series) -> pd.Series:
     """Apply free-text redaction to every string cell in a Series."""
     return series.apply(lambda v: redact_free_text(v)[0] if isinstance(v, str) else v)
-
-
-def _join_comment_counts(tickets_df: pd.DataFrame, comments_df: pd.DataFrame) -> pd.DataFrame:
-    """Left-join per-ticket comment counts onto tickets."""
-    if comments_df.empty:
-        tickets_df = tickets_df.copy()
-        tickets_df["comment_count"] = 0
-        return tickets_df
-    counts = comments_df.groupby("ticket_id").size().rename("comment_count")
-    merged = tickets_df.merge(counts, on="ticket_id", how="left")
-    merged["comment_count"] = merged["comment_count"].fillna(0).astype(int)
-    return merged
-
-
-def _join_categories(tickets_df: pd.DataFrame, categories_df: pd.DataFrame) -> pd.DataFrame:
-    """Left-join category metadata (sla_hours, assignment_group) onto tickets."""
-    if categories_df.empty:
-        return tickets_df
-    meta_cols = ["category_id", "category_name", "sla_hours", "assignment_group"]
-    available = [c for c in meta_cols if c in categories_df.columns]
-    return tickets_df.merge(categories_df[available], on="category_id", how="left")
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +41,47 @@ def build_fact_absence(
     flag — the specific type_id is nullified to avoid GDPR Art. 9 disclosure.
     The notes column is excluded entirely. employee_id is replaced by employee_sk.
     """
-    df = _mask_sensitive_absences(absence_df, sensitive_absence_type_ids)
-    df["employee_sk"] = _resolve_employee_sks(df["employee_id"], df["start_date"], dim_employee)
-    drop = [c for c in _ABSENCE_DROP_COLS if c in df.columns]
-    return df.drop(columns=drop).reset_index(drop=True)
+    absence_with_nk = absence_df.copy()
+    absence_with_nk["_employee_nk"] = absence_df["employee_id"].apply(
+        lambda eid: _employee_nk(eid) if pd.notna(eid) else None
+    )
+
+    if sensitive_absence_type_ids:
+        in_clause = (
+            "a.absence_type_id IN ("
+            + ", ".join(f"'{v}'" for v in sensitive_absence_type_ids)
+            + ")"
+        )
+    else:
+        in_clause = "false"
+
+    return duck_query(
+        f"""
+        SELECT
+            a.absence_id,
+            CASE WHEN {in_clause} THEN NULL  ELSE a.absence_type_id END AS absence_type_id,
+            CASE WHEN {in_clause} THEN true  ELSE false               END AS is_sensitive_absence,
+            a.start_date,
+            a.end_date,
+            a.days_requested,
+            a.status,
+            a.approver_employee_id,
+            a.created_at,
+            a.last_modified,
+            d.employee_sk
+        FROM absence_with_nk a
+        LEFT JOIN dim_employee d
+            ON  d.employee_nk = a._employee_nk
+            AND d.effective_from <= a.start_date::TIMESTAMP
+            AND (d.effective_to IS NULL OR d.effective_to >= a.start_date::TIMESTAMP)
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY a.absence_id
+            ORDER BY d.effective_from DESC
+        ) = 1
+        """,
+        absence_with_nk=absence_with_nk,
+        dim_employee=dim_employee,
+    )
 
 
 def build_fact_hr_tickets(
@@ -135,10 +99,55 @@ def build_fact_hr_tickets(
     """
     df = tickets_df.copy()
     df["description"] = _redact_column(df["description"])
-    df["caller_employee_sk"] = _resolve_employee_sks(
-        df["caller_employee_id"], df["opened_at"], dim_employee
+    df["_caller_nk"] = df["caller_employee_id"].apply(
+        lambda eid: _employee_nk(eid) if pd.notna(eid) else None
     )
-    df = _join_comment_counts(df, comments_df)
-    df = _join_categories(df, categories_df)
-    drop = [c for c in _TICKET_DROP_COLS if c in df.columns]
-    return df.drop(columns=drop).reset_index(drop=True)
+
+    return duck_query(
+        """
+        WITH comment_counts AS (
+            SELECT ticket_id, COUNT(*) AS comment_count
+            FROM comments_df
+            GROUP BY ticket_id
+        ),
+        resolved AS (
+            SELECT
+                t.ticket_id,
+                t.number,
+                t.category_id,
+                t.short_description,
+                t.description,
+                t.priority,
+                t.state,
+                t.assigned_to,
+                t.opened_at,
+                t.resolved_at,
+                t.closed_at,
+                t.satisfaction_rating,
+                t.last_modified,
+                d.employee_sk                          AS caller_employee_sk,
+                COALESCE(cc.comment_count, 0)::INTEGER AS comment_count
+            FROM df t
+            LEFT JOIN dim_employee d
+                ON  d.employee_nk = t._caller_nk
+                AND d.effective_from <= t.opened_at::TIMESTAMP
+                AND (d.effective_to IS NULL OR d.effective_to >= t.opened_at::TIMESTAMP)
+            LEFT JOIN comment_counts cc ON cc.ticket_id = t.ticket_id
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY t.ticket_id
+                ORDER BY d.effective_from DESC
+            ) = 1
+        )
+        SELECT
+            r.*,
+            c.category_name,
+            c.sla_hours,
+            c.assignment_group
+        FROM resolved r
+        LEFT JOIN categories_df c ON c.category_id = r.category_id
+        """,
+        df=df,
+        comments_df=comments_df,
+        categories_df=categories_df,
+        dim_employee=dim_employee,
+    )
