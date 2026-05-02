@@ -84,7 +84,7 @@ company. The data is GDPR-sensitive. Governance is non-negotiable.
 │       ├── test_gold.py
 │       └── test_integration.py
 ├── docker-compose.yml         ← Container definitions for pipeline + test runner
-├── Dockerfile                 ← Pipeline image (Python 3.11-slim)
+├── Dockerfile                 ← Pipeline image (Python 3.14.4-slim)
 └── audit/
     └── run_<timestamp>.json   ← Auto-generated audit log per pipeline run
 ```
@@ -102,7 +102,7 @@ company. The data is GDPR-sensitive. Governance is non-negotiable.
 | Pseudonymisation | Python stdlib `hmac` + `hashlib` | No extra dependency; HMAC not plain SHA256 |
 | Testing | pytest | Standard; parametrise DQ scenarios |
 | Config | PyYAML | Human-readable field classification manifest |
-| Python version | ≥ 3.11 | match-case; tomllib; zoneinfo |
+| Python version | ≥ 3.14.4 | match-case; tomllib; zoneinfo |
 
 **Explicitly excluded:** Airflow, dbt, Spark, any cloud service, any database server.
 

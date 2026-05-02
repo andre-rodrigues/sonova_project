@@ -8,6 +8,8 @@
 
 ## Medallion Layer Contracts
 
+- [] **ALL** layers must implement incremental and idempotent processing.
+
 ### Bronze Rules
 
 - [ ] Enforce data contracts. Validate with Pandera or similar at the end of the bronze stage, but before writing Parquet. Stop pipeline over breaking schema changes.

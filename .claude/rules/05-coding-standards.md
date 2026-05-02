@@ -6,11 +6,11 @@ paths:
 
 ## Software Design Principles
 
-- [ ] Use DDD principles for code organization — separate modules by domain rather than technical details.
-- [ ] Use SOLID principles for function and class design — single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion.
-- [ ] Check for code complexity — if a function has many branches or nested logic, consider breaking it down.
-- [ ] Keep low coupling and high cohesion — functions should do one thing and do it well, with minimal dependencies on other parts of the codebase.
-- [ ] Dont' make comments in the code using real data values.
+- [ ] **Always** Use DDD principles for code organization — separate modules by domain rather than technical details.
+- [ ] **Always** Use SOLID principles for function and class design — single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion.
+- [ ] **Always** Check for code complexity — if a function has many branches or nested logic, consider breaking it down.
+- [ ] **Always** Keep low coupling and high cohesion — functions should do one thing and do it well, with minimal dependencies on other parts of the codebase.
+- [ ] **Never** make comments in the code using real data values.
 
 ## Python Style
 

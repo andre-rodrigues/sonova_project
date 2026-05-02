@@ -58,8 +58,6 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ## Phase 2 — Bronze Loader
 
-**File:** `src/ingest/bronze_loader.py`
-
 ### Error type
 
 - [x] `ContractBreachError(ValueError)` — defined at module top; raised on any breaking contract violation; caught by orchestrator to write FAILED audit entry and exit non-zero
@@ -152,8 +150,6 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ## Phase 3 — Governance Module
 
-**File:** `src/transform/governance.py`
-
 - [ ] `load_hmac_secret() -> bytes` — reads `PIPELINE_HMAC_SECRET` env var; raises `EnvironmentError` if missing; logs first 4 characters as fingerprint (never the full secret)
 - [ ] `pseudonymise(value: str, secret: bytes) -> str` — `hmac.new(secret, value.encode(), sha256).hexdigest()[:16]`
 - [ ] `redact_free_text(text: str) -> tuple[str, int]` — applies all 7 REDACTION_PATTERNS, returns `(redacted_text, n_replacements)`
@@ -165,8 +161,6 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 ---
 
 ## Phase 4 — DQ Checks
-
-**File:** `src/transform/dq_checks.py`
 
 All functions: `def check_<rule_id>(df, ...) -> tuple[pd.DataFrame, pd.DataFrame]` (clean, quarantine).
 Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_at`.
@@ -211,8 +205,6 @@ Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_
 
 ## Phase 5 — Dimensions
 
-**File:** `src/transform/dimensions.py`
-
 - [ ] `build_dim_employee(employees_df, job_df, personal_df, contracts, secret) -> tuple[pd.DataFrame, pd.DataFrame]`
   - SCD Type 2: one row per employee×job-assignment period
   - `employee_sk` = UUID5(f"{employee_id}|{effective_from.isoformat()}")
@@ -236,8 +228,6 @@ Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_
 
 ## Phase 6 — Facts
 
-**File:** `src/transform/facts.py`
-
 - [ ] `resolve_employee_sk(nk: str, event_date: date, dim_employee: pd.DataFrame) -> str | None`
   — join on employee_nk + event_date within [effective_from, effective_to]
 
@@ -256,8 +246,6 @@ Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_
 
 ## Phase 7 — Gold Views
 
-**File:** `src/serve/gold_views.py`
-
 Uses DuckDB in-memory to aggregate from silver Parquet files.
 
 - [ ] `build_headcount_by_department(dim_employee_path, dim_dept_path) -> pd.DataFrame`
@@ -275,8 +263,6 @@ Uses DuckDB in-memory to aggregate from silver Parquet files.
 ---
 
 ## Phase 8 — Orchestrator
-
-**File:** `src/pipeline.py`
 
 - [ ] Load config (`data_contracts.yaml` + `dq_rules.yaml`)
 - [ ] `validate_contract_definition(contracts)` — fail fast if any table/column is missing required contract keys
