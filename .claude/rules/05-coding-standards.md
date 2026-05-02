@@ -8,7 +8,6 @@
 ## Python Style
 
 - [ ] Python ≥ 3.11 — use `match`/`case`, `tomllib`, `zoneinfo` where appropriate
-- [ ] `from __future__ import annotations` at the top of every module
 - [ ] Type hints on every function signature — parameters and return type
 - [ ] Docstring on every public function:
   ```python
