@@ -1,75 +1,48 @@
 # Rule File: Testing Standards & Coverage Requirements
 
-> All tests live in `tests/`. Run with `pytest tests/ -v`.
-> Tests must pass before any PR/commit is considered complete.
-> Claude Code must run the test suite after every non-trivial code change.
+> Tests must pass before any code changes are considered complete.
+> All tests should run with the project's test runner in under 60 seconds on standard hardware.
+>
+> Test requirements (organizational patterns, assertion strategies, coverage minimums) are below.
 
 ---
 
-## Test Directory Structure
+## Test Organization
 
-```
-tests/
-├── conftest.py                          ← shared fixtures (synthetic DataFrames, HMAC setup, tmp dirs)
-├── gdpr/
-│   ├── __init__.py
-│   ├── conftest.py                      ← HMAC secret monkeypatching, PII fixtures
-│   ├── test_pseudonymisation.py         ← HMAC determinism, no raw values in output
-│   ├── test_redaction.py                ← pattern-by-pattern free-text redaction
-│   ├── test_pii_exclusion.py            ← PII-S/SC fields absent from internal/gold
-│   └── test_access_control.py          ← output directory permissions
-├── dq/
-│   ├── __init__.py
-│   ├── conftest.py                      ← quarantine-specific single-table fixtures
-│   ├── test_duplicates.py              ← DQ-01,10,15,20  (single-table)
-│   ├── test_domain_values.py           ← DQ-02,03,04,06,07,08,09,19,21  (single-table)
-│   ├── test_standardisation.py         ← DQ-22  (single-table)
-│   └── test_temporal_consistency.py    ← DQ-12,23  (single-table)
-└── pipeline/
-    ├── __init__.py
-    ├── test_bronze.py
-    ├── test_dimensions.py
-    ├── test_facts.py
-    ├── test_gold.py
-    └── test_integration.py             ← cross-object DQ checks + full pipeline run
-```
+Tests must be organized by concern area:
 
-> **Single-table rule:** Unit DQ tests (`tests/dq/`) use **single-table synthetic fixtures
-> only**. Any check that joins, looks up, or cross-references a second DataFrame is an
-> integration test and lives in `tests/pipeline/test_integration.py`.
+- **GDPR/Governance tests:** Pseudonymisation, redaction, PII exclusion, access controls
+- **Data Quality tests:** Unit-tier DQ checks (single-table) organized by violation category
+- **Pipeline tests:** Integration-tier tests and end-to-end pipeline runs
+- **Dimension tests:** Dimensional model validation including SCD Type 2 versioning
+- **Fact tests:** Fact table grain, surrogate key resolution, data quality compliance
+- **Gold tests:** Aggregation validation, minimum grain enforcement, PII absence in aggregates
+
+> **Single-table rule:** Unit DQ tests use **single-table synthetic fixtures only**.
+> Any check that joins, looks up, or cross-references a second table is an
+> integration test.
 
 ---
 
 ## Fixture Standards
 
-All top-level shared fixtures live in `tests/conftest.py`. Subdirectory `conftest.py` files
-hold domain-scoped fixtures. Rules:
+All shared fixtures must be stored in a centralized location. Domain-scoped fixtures can be
+co-located with related tests. Rules:
 
 - [ ] Fixtures are **synthetic** — never use real source CSV data in tests
 - [ ] Fixtures cover the **happy path** and known **edge cases** (from data_analysis.md)
-- [ ] Known-bad records (EMP999, EMP888, EMP023, TKT019, COMP028, etc.) have dedicated fixtures
-- [ ] Use `tmp_path` pytest fixture for any test that writes output files
-- [ ] HMAC secret is set via `monkeypatch.setenv("PIPELINE_HMAC_SECRET", "test-secret")`
-  in any test that exercises governance functions
+- [ ] Known-bad records have dedicated fixtures
+- [ ] Any test that writes output files uses isolated temporary directories
+- [ ] Tests requiring secrets/credentials set them via environment variable monkeypatching
 
-```python
-# conftest.py structure
-@pytest.fixture
-def employees_clean() -> pd.DataFrame: ...
-@pytest.fixture
-def employees_with_duplicate_pk() -> pd.DataFrame: ...
-@pytest.fixture
-def employees_with_future_hire_date() -> pd.DataFrame: ...
-@pytest.fixture
-def compensation_with_negative_salary() -> pd.DataFrame: ...
-@pytest.fixture
-def employee_personal_with_pii() -> pd.DataFrame: ...
-@pytest.fixture
-def tickets_with_pii_in_description() -> pd.DataFrame: ...
-@pytest.fixture
-def absence_requests_inverted_dates() -> pd.DataFrame: ...
-# ... one fixture per single-table DQ rule
-```
+**Fixture coverage requirements:**
+- Clean/valid data for each table
+- Known duplicate primary keys
+- Future/past dates and temporal inconsistencies
+- Boundary value violations (negative amounts, zero salary with missing grades, etc.)
+- Invalid formats (malformed emails, phone numbers)
+- Missing nullable/required columns
+- PII-containing records for governance validation
 
 ---
 

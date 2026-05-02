@@ -9,24 +9,18 @@
 
 ## DQ Framework Contract
 
-```python
-# Every DQ check function must conform to this signature:
-def check_<rule_id>(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Returns:
-        clean: rows that passed this check
-        quarantine: rows that failed, with added columns:
-            - dq_rule_id: str  (e.g. "DQ-01")
-            - dq_reason: str   (human-readable explanation)
-            - dq_source_table: str
-    """
-```
+Every data quality check must:
 
-- [ ] Checks are composable — output `clean` from one check feeds as input to next
-- [ ] Quarantine rows accumulate across checks for the same table
-- [ ] Quarantine output is written once per table after all checks run
-- [ ] A row can fail multiple rules — it is quarantined on the first failure (fail-fast per row)
-- [ ] Quarantine files include all original columns plus `dq_rule_id`, `dq_reason`, `dq_source_table`
+- [ ] Accept a single data table as input
+- [ ] Return two separate outputs:
+  - **Clean data:** rows that passed the check
+  - **Quarantine data:** rows that failed, with added columns:
+    - `dq_rule_id` — identifier (e.g., "DQ-01")
+    - `dq_reason` — human-readable explanation of failure
+    - `dq_source_table` — fully qualified source table name
+- [ ] Be composable — clean output from one check feeds as input to the next
+- [ ] Accumulate quarantine rows across all checks for the same table
+- [ ] Implement fail-fast per row — quarantine on first rule violation
 
 ---
 
