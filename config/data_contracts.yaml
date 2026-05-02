@@ -26,7 +26,7 @@
 #   Checks fire on non-null values only (pandera default).
 #
 # --- PII classification keys ---
-# tier:      PII-SC | PII-S | PII | IND | SAFE
+# tier:      PII-SC | PII-S | PII | IND (Indirectly Identifiable) | SAFE
 # treatment: exclude | pseudonymise | generalise_to_year | redact | passthrough
 #
 # _contract_version: semver string at table level; recorded in every audit run.
