@@ -1,0 +1,13 @@
+output/
+audit/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+*.egg-info/
+*.db
+*.duckdb
+*.parquet
+*.parquet.tmp
+.DS_Store

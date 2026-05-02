@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(data/**)",
+      "Write(src/**)",
+      "Write(tests/**)",
+      "Write(.claude/rules/**)",
+      "Write(CHANGELOG.md)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)"
+    ],
+    "deny": [
+      "Write(data/**)",
+      "Write(README.md)",
+      "Write(TASK.md)"
+    ]
+  },
+  "env": {
+    "PYTHONPATH": "${workspaceFolder}"
+  }
+}
