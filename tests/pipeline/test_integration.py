@@ -21,7 +21,7 @@ from src.transform.dimensions import (
     build_restricted_dim_employee,
 )
 from src.transform.facts import build_fact_absence, build_fact_hr_tickets
-from src.serve.gold_views import (
+from src.transform.gold_views import (
     build_absence_rate_by_job_family,
     build_headcount_by_department,
     build_open_tickets_summary,

@@ -250,7 +250,7 @@ the current state of the project and why decisions were made.
 - Branch `feat/silver-dimensions-facts` opened. All 127 tests pass in 0.35s.
 - Coding standards applied: pure functions, 40-line limit, type hints, docstrings.
 
-## [2026-05-05] — Improve bronze_loader.py test coverage from 80% to 94%
+## [2026-05-02] — Improve bronze_loader.py test coverage from 80% to 94%
 
 ### Fixed
 
@@ -371,3 +371,32 @@ if pandera's internal API changes at runtime.
 - Branch `feat/complete-pipeline` opened. All 174 tests pass in under 3 seconds.
 - Two runtime issues corrected: pandera import path, DuckDB TIMESTAMP_NS cast.
 - `from __future__ import annotations` added in facts.py for Python 3.9 `str | None` compatibility.
+
+## [2026-05-02] — ClickHouse + Metabase Visualization Layer
+
+Implements the Visualization Rules from `.claude/rules/01-architecture.md`:
+- ClickHouse as analytical query engine (gold layer only)
+- Metabase for dashboarding, connected to ClickHouse
+
+### Added
+- `Dockerfile.metabase` — extends `metabase/metabase:v0.58.13.1` with the ClickHouse community
+  driver JAR (`clickhouse-metabase-driver` v1.53.4) baked in at build time
+- `src/serve/clickhouse_loader.py` — loads all three gold Parquet files into ClickHouse using
+  TRUNCATE + INSERT idempotency pattern; skips gracefully when `CLICKHOUSE_HOST` is not set
+- `.env` — template with `PIPELINE_HMAC_SECRET`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USER`,
+  `CLICKHOUSE_PASSWORD` (excluded from version control via `.gitignore`)
+
+### Changed
+- `docker-compose.yml` — added `clickhouse` service (`clickhouse/clickhouse-server:25.8.22.28`),
+  `metabase` service, shared `etl_net` bridge network, named volumes `clickhouse_data` and
+  `metabase_data`; `pipeline` now waits on ClickHouse healthcheck before starting
+- `src/pipeline.py` — inserted Stage 6 (ClickHouse load) between gold materialisation and
+  permissions enforcement; former Stage 6 (permissions) renumbered to Stage 7; ClickHouse load
+  result recorded in audit log under `audit["clickhouse"]`
+- `requirements.txt` — added `clickhouse-connect==0.8.0`
+
+### Architecture Notes
+- Only `output/gold/` tables are loaded into ClickHouse; silver and bronze are never exposed
+- ClickHouse tables use `MergeTree` engine with business-key ORDER BY; idempotent per run
+- `_generated_at` stored as `String` (ISO-8601) to avoid Pandas → ClickHouse datetime casting
+- `sla_breach_count` typed as `Float64` to match DuckDB `SUM(CASE WHEN …)` output dtype

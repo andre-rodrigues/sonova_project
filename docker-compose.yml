@@ -1,7 +1,17 @@
+networks:
+  etl_net:
+    driver: bridge
+
+volumes:
+  clickhouse_data:
+  metabase_data:
+
 services:
   pipeline:
     build: .
     working_dir: /app
+    networks:
+      - etl_net
     volumes:
       - .:/app
       - ./data:/app/data:ro
@@ -9,13 +19,73 @@ services:
       - ./audit:/app/audit
     environment:
       - PIPELINE_HMAC_SECRET=${PIPELINE_HMAC_SECRET}
+      - CLICKHOUSE_HOST=${CLICKHOUSE_HOST}
+      - CLICKHOUSE_PORT=${CLICKHOUSE_PORT}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
     command: python -m src.pipeline
 
   test:
     build: .
     working_dir: /app
+    networks:
+      - etl_net
     volumes:
       - .:/app
     environment:
-      - PIPELINE_HMAC_SECRET=test-secret
+      - PIPELINE_HMAC_SECRET=${PIPELINE_HMAC_SECRET}
     command: pytest tests/ -v --cov=src --cov-report=term-missing
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8.22.28
+    container_name: clickhouse-server
+    networks:
+      - etl_net
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    environment:
+      - CLICKHOUSE_DB=${CLICKHOUSE_DATABASE}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  metabase:
+    image: metabase/metabase:v0.58.13.1
+    container_name: metabase
+    networks:
+      - etl_net
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./metabase/data:/metabase-data
+      - ./metabase/scripts:/scripts
+    environment:
+      - MB_DB_TYPE=h2
+      - MB_DB_FILE=/metabase-data/metabase.db
+      - MB_PLUGINS_DIR=/plugins
+      - MB_SETUP_TOKEN=${MB_SETUP_TOKEN}
+      - MB_ADMIN_EMAIL=${MB_ADMIN_EMAIL}
+      - MB_ADMIN_PASSWORD=${MB_ADMIN_PASSWORD}
+      - MB_ADMIN_FIRST_NAME=${MB_ADMIN_FIRST_NAME}
+      - MB_ADMIN_LAST_NAME=${MB_ADMIN_LAST_NAME}
+      - CLICKHOUSE_HOST=${CLICKHOUSE_HOST}
+      - CLICKHOUSE_PORT=${CLICKHOUSE_PORT}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+    entrypoint: ["/bin/bash", "/scripts/docker-entrypoint.sh"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy

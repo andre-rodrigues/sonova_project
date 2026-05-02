@@ -38,6 +38,15 @@
 
 ---
 
+## Visualization Rules
+
+- [ ] Use ClickHouse as query engine for data visualization.
+- [ ] Only golden layer should be exposed to ClickHouse — never silver or bronze.
+- [ ] After building golden layer, load data into ClickHouse for visualization.
+- [ ] Use Metabase for dashboarding. Connect Metabase to ClickHouse to expose golden layer.
+
+---
+
 ## DuckDB Usage Rules
 
 - [ ] Use DuckDB **only for analytical queries** (silver → gold aggregation, example queries)

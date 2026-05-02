@@ -6,3 +6,4 @@ pytest==9.0.3
 pytest-cov==7.1.0
 python-dotenv==1.2.2
 pandera==0.31.1
+clickhouse-connect==0.8.0

@@ -12,3 +12,4 @@ __pycache__/
 *.parquet
 *.parquet.tmp
 .DS_Store
+metabase/data

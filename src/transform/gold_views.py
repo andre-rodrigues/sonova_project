@@ -11,7 +11,6 @@ import pandas as pd
 
 from src.utils import duck_query, now_utc
 
-
 def build_headcount_by_department(
     dim_employee_path: Path,
     dim_dept_path: Path,

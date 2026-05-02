@@ -6,8 +6,9 @@ Stage order:
   3. Silver dimensions
   4. Silver facts
   5. Gold materialisations
-  6. Permission enforcement
-  7. Audit log write
+  6. ClickHouse load (skipped if CLICKHOUSE_HOST not set)
+  7. Permission enforcement
+  8. Audit log write
 """
 
 import logging
@@ -36,10 +37,15 @@ from src.transform.dimensions import (
 )
 from src.transform.facts import build_fact_absence, build_fact_hr_tickets
 from src.transform.governance import load_hmac_secret
-from src.serve.gold_views import (
+from src.transform.gold_views import (
     build_absence_rate_by_job_family,
     build_headcount_by_department,
     build_open_tickets_summary,
+)
+from src.serve.clickhouse_loader import (
+    clickhouse_config_from_env,
+    is_clickhouse_configured,
+    load_gold_to_clickhouse,
 )
 
 logging.basicConfig(
@@ -204,13 +210,25 @@ def _stage5_gold(dim_paths: dict[str, Path], fact_paths: dict[str, Path]) -> lis
     return materialised
 
 
-def _stage6_permissions() -> None:
+def _stage6_clickhouse(gold_dir: Path, gold_tables: tuple[str, ...]) -> dict:
+    """Load gold Parquet files into ClickHouse if configured."""
+    if not is_clickhouse_configured():
+        logger.info("Stage 6: ClickHouse load — skipped (CLICKHOUSE_HOST not set)")
+        return {"skipped": True}
+    logger.info("Stage 6: ClickHouse load — start")
+    cfg = clickhouse_config_from_env()
+    rows_by_table = load_gold_to_clickhouse(gold_dir, gold_tables, **cfg)
+    logger.info("Stage 6: ClickHouse load — complete (%d tables loaded)", len(rows_by_table))
+    return {"tables_loaded": rows_by_table}
+
+
+def _stage7_permissions() -> None:
     """Enforce directory permissions per governance access control rules."""
     for rel_path, mode in _DIR_PERMISSIONS.items():
         path = OUTPUT_DIR / rel_path
         if path.exists():
             path.chmod(mode)
-    logger.info("Stage 6: Permissions enforced")
+    logger.info("Stage 7: Permissions enforced")
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +257,8 @@ def _run_stages(contracts: dict, dq_rules: dict, secret: bytes, audit: dict) -> 
 
     gold_views = _stage5_gold(dim_paths, fact_paths)
     audit["gold"] = {"views_materialised": gold_views}
-    _stage6_permissions()
+    audit["clickhouse"] = _stage6_clickhouse(OUTPUT_DIR / "gold", gold_views)
+    _stage7_permissions()
 
 
 def main() -> None:

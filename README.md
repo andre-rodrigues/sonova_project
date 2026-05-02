@@ -1,78 +1,74 @@
 # People Analytics ETL Pipeline
 
-A local, GDPR-compliant medallion ETL pipeline that ingests HR data from three source systems (SuccessFactors, ServiceNow, ATOSS), applies data governance and quality checks, and produces an analytics-ready dimensional model in Parquet format.
+A local, GDPR-compliant medallion ETL pipeline that ingests HR data from three source systems (SuccessFactors, ServiceNow, ATOSS), applies data governance and quality checks, and produces an analytics-ready dimensional model in Parquet format. The gold layer is loaded into ClickHouse and exposed through a Metabase dashboard for interactive analysis.
 
-## Architecture
 
-```
-data/               ← Read-only source CSVs (synthetic)
-  successfactors/   ← 8 tables: employees, job, personal, compensation, contact, departments, job_codes, locations
-  servicenow/       ← 3 tables: tickets, ticket_comments, ticket_categories
-  atoss/            ← 3 tables: absence_requests, absence_types, time_entries
+## Key design decisions
 
-output/
-  bronze/           ← Raw CSV → Parquet, contract-validated (chmod 700)
-  silver/
-    internal/       ← Pseudonymised, PII-stripped analytical tables (chmod 750)
-    restricted/     ← Full PII retained, surrogate key mapping (chmod 700)
-  gold/             ← Aggregated views, no individual rows (chmod 755)
-  quarantine/       ← DQ failures with rule ID + reason (chmod 700)
+### Data engineering related
 
-audit/              ← Per-run JSON audit log
-```
+- **ETL, not ELT**. The task asked for an ETL pipeline, so this became a base principle troughout the application.
+- The project uses **Python with Pandas** to process the data instead of a out of the shelf framework. This decision was intended to show the rationale behind each step of the process.
+- **Data contracts and Data quality enforcement** from beginning to ensure resilience and compliance with GDPR.
+- Data visualization with **DuckDB and/or Metabase**. The initial idea was to provide only analytics ready models to be read with DuckDB, but I decided to extend the application to also provide a more friendly interface to visualize the data.
 
-**Layers:**
+### AI related
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Bronze | Pandas + Pandera | CSV → Parquet with contract validation |
-| Silver | Pandas | DQ checks, dimensional modelling, HMAC pseudonymisation |
-| Gold | DuckDB (in-memory) | Aggregated views from silver Parquet files |
+- Used AI to **explore the available data** before start the development. Generated a comprehensive analysis and used as input for AI agent.
+- Established **rules for Claude** as harness to keep standards and address design decisions.
+- Created **implementation plan** so the agent would follow a rationale for incremental development and know how to continue in case of interruptions.
+
 
 ## Setup
 
 ### Prerequisites
 
-- Docker and docker-compose, **or** Python ≥ 3.9 with pip
+- Docker and docker-compose
 
 ### Running with Docker
 
 ```bash
-# Set the HMAC pseudonymisation secret
-export PIPELINE_HMAC_SECRET="your-secret-here"
+# 1. Copy the environment template and fill in your secrets
+cp .env.example .env
+# Edit .env: set PIPELINE_HMAC_SECRET, CLICKHOUSE_PASSWORD, MB_ADMIN_PASSWORD
 
-# Run the pipeline
-docker-compose up pipeline
+# 2a. Run the full stack (ETL pipeline + ClickHouse + Metabase)
+docker-compose up
 
-# Run tests
+# 2b. Run the ETL pipeline only (ClickHouse is started automatically as a dependency)
+docker-compose run --rm pipeline
+
+# 3. Run tests
 docker-compose up test
 ```
 
-### Running locally
-
-```bash
-pip install -r requirements.txt
-
-export PIPELINE_HMAC_SECRET="your-secret-here"
-python -m src.pipeline
-```
-
-### Running tests
-
-```bash
-export PIPELINE_HMAC_SECRET="test-secret"
-pytest -v
-```
-
-All 174 tests should pass in under 10 seconds.
-
 ### Analytical queries
 
-After running the pipeline, query the gold layer with DuckDB:
+After running the pipeline, query the gold layer directly with DuckDB:
 
 ```bash
 duckdb -c ".read queries/example_queries.sql"
 ```
+
+Or open Metabase at http://localhost:3000 and connect to the pre-loaded ClickHouse instance.
+Admin credentials are the `MB_ADMIN_EMAIL` and `MB_ADMIN_PASSWORD` values set in `.env`.
+
+
+## Pipeline Stages
+
+The orchestrator (`src/pipeline.py`) executes seven stages in order:
+
+1. **Bronze ingest** — reads all source CSVs, enforces data contracts, writes Parquet to `output/bronze/`
+2. **DQ checks** — runs 25 data quality rules; quarantined rows written to `output/quarantine/`
+3. **Silver dimensions** — builds `dim_employee` (SCD Type 2), `dim_department`, `dim_job`, `dim_location`
+4. **Silver facts** — builds `fact_absence` and `fact_hr_tickets`; PII governed before write
+5. **Gold materialisation** — produces three aggregated views via DuckDB; written to `output/gold/`
+6. **ClickHouse load** — loads gold Parquet tables into ClickHouse; skipped if `CLICKHOUSE_HOST` is not set
+7. **Permissions + audit** — enforces directory-level access controls; writes `audit/run_<timestamp>.json`
+
+Each stage logs start/end and row counts. Any failure writes a `FAILED` audit entry before exiting.
+
+---
 
 ## Data Governance
 
@@ -142,15 +138,3 @@ Three aggregated views with no individual-level rows:
 - `headcount_by_department` — active headcount by department × location × employment type
 - `absence_rate_by_job_family` — rolling 90-day absence rate, sensitive absences excluded
 - `open_tickets_summary` — open tickets by category with SLA breach count
-
-## AI Tool Usage
-
-This pipeline was built using Claude Code (Anthropic) as the primary development tool. Claude was used for:
-
-- **Effective:** Writing boilerplate-heavy but correctness-critical code (Pandera schema builders, HMAC pseudonymisation, DQ check scaffolding, SCD2 surrogate key derivation). The AI reliably followed the rule files in `.claude/rules/` and produced code that passed tests on the first or second attempt.
-
-- **Required correction:** The initial `apply_field_classification` implementation pseudonymised PII-S fields in the internal layer instead of excluding them. The governance rule (tier takes precedence over treatment) was in the rule file but was initially applied in the wrong order. Fixed by restructuring the conditional logic so tier is checked before treatment.
-
-- **Runtime environment:** The Dockerfile targets Python 3.14.4 but the local runtime is 3.9.6. This caused two issues: `str | None` union syntax (requires 3.10+, fixed with `from __future__ import annotations`) and `import pandera.pandas as pa` (not a valid submodule in pandera 0.20.4, fixed to `import pandera as pa`).
-
-- **DuckDB type casting:** The `DATE_DIFF` call in `build_open_tickets_summary` required an explicit `::TIMESTAMP` cast on the `opened_at` column because pandas wrote it as `TIMESTAMP_NS` which DuckDB couldn't automatically coerce to `TIMESTAMP WITH TIME ZONE`. Added `.::TIMESTAMP` cast in the SQL.

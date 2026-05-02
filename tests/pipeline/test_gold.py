@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from src.serve.gold_views import (
+from src.transform.gold_views import (
     build_absence_rate_by_job_family,
     build_headcount_by_department,
     build_open_tickets_summary,
