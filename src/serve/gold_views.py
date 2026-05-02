@@ -82,7 +82,9 @@ def build_absence_rate_by_job_family(
         FROM read_parquet('{fact_absence_path}')   a
         JOIN read_parquet('{dim_employee_path}')   e ON a.employee_sk = e.employee_sk
         JOIN read_parquet('{dim_job_path}')        j ON e.job_code   = j.job_code
-        WHERE a.start_date >= CURRENT_DATE - INTERVAL '90' DAY
+        WHERE a.start_date >= (
+                SELECT MAX(start_date) FROM read_parquet('{fact_absence_path}')
+            ) - INTERVAL '90' DAY
           AND a.is_sensitive_absence = false
         GROUP BY j.job_family
         ORDER BY total_absence_days DESC

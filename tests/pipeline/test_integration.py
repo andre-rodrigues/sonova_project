@@ -218,3 +218,53 @@ def test_gold_headcount_generated_at_present(clean_dfs, dim_employee_internal, c
 
     result = build_headcount_by_department(emp_path, dept_path)
     assert "_generated_at" in result.columns
+
+
+def test_gold_absence_rate_builds(clean_dfs, dim_employee_internal, contracts, dq_rules, tmp_path):
+    sensitive_ids = dq_rules.get("sensitive_absence_type_ids", [])
+    absence_df = clean_dfs.get("atoss/absence_requests", pd.DataFrame())
+    job_df = build_dim_job(clean_dfs["successfactors/job_codes"], contracts)
+
+    fact_abs = build_fact_absence(absence_df, dim_employee_internal, sensitive_ids)
+    emp_path = tmp_path / "dim_employee.parquet"
+    job_path = tmp_path / "dim_job.parquet"
+    fact_path = tmp_path / "fact_absence.parquet"
+    _write_parquet(dim_employee_internal, emp_path)
+    _write_parquet(job_df, job_path)
+    _write_parquet(fact_abs, fact_path)
+
+    result = build_absence_rate_by_job_family(fact_path, emp_path, job_path)
+    assert "employee_sk" not in result.columns
+    assert "_generated_at" in result.columns
+    assert "absence_rate" in result.columns
+
+
+def test_gold_open_tickets_builds(clean_dfs, dim_employee_internal, contracts, dq_rules, tmp_path):
+    tickets = clean_dfs.get("servicenow/tickets", pd.DataFrame())
+    comments = clean_dfs.get("servicenow/ticket_comments", pd.DataFrame())
+    categories = clean_dfs.get("servicenow/ticket_categories", pd.DataFrame())
+    dept_df = build_dim_department(clean_dfs["successfactors/departments"], contracts)
+
+    fact_tkt = build_fact_hr_tickets(tickets, comments, categories, dim_employee_internal, contracts, _HMAC_SECRET)
+    dept_path = tmp_path / "dim_department.parquet"
+    fact_path = tmp_path / "fact_hr_tickets.parquet"
+    _write_parquet(dept_df, dept_path)
+    _write_parquet(fact_tkt, fact_path)
+
+    result = build_open_tickets_summary(fact_path, dept_path)
+    assert "caller_employee_sk" not in result.columns
+    assert "_generated_at" in result.columns
+    assert "open_ticket_count" in result.columns
+
+
+def test_dq_quarantine_files_written_to_disk(bronze_dfs, dq_rules, tmp_path):
+    quarantine_dir = tmp_path / "quarantine"
+    _, quarantine = run_all_checks(bronze_dfs, dq_rules, quarantine_dir)
+
+    written = list(quarantine_dir.glob("*.parquet"))
+    assert len(written) > 0, "Expected at least one quarantine Parquet file on disk"
+
+    for path in written:
+        df = pd.read_parquet(path)
+        for col in ("dq_rule_id", "dq_reason", "dq_source_table", "dq_detected_at"):
+            assert col in df.columns, f"{col} missing from {path.name}"

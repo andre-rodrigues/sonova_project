@@ -29,6 +29,18 @@ _DTYPE_MAP: Final = MappingProxyType({
     "time": pa.String,
 })
 
+# YAML dtype → pandas nullable dtype for injecting all-NA columns.
+# Ensures injected columns pass pandera dtype validation (coerce=False).
+_INJECTION_DTYPE_MAP: Final = MappingProxyType({
+    "str": "string",
+    "int": "Int64",
+    "float": "Float64",
+    "bool": "boolean",
+    "date": "datetime64[ns]",
+    "datetime": "datetime64[ns]",
+    "time": "string",
+})
+
 
 class ContractBreachError(ValueError):
     """Raised on any breaking data contract violation."""
@@ -136,7 +148,7 @@ def validate_manifest_coverage(
 def inject_missing_nullable_columns(
     df: pd.DataFrame, table_contract: dict
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Inject pd.NA for any nullable column absent from df.
+    """Inject a correctly-typed all-NA column for any nullable column absent from df.
 
     Non-nullable missing columns are left for pandera to catch as breaking
     violations. Returns (df, list_of_injected_column_names).
@@ -152,7 +164,10 @@ def inject_missing_nullable_columns(
     if injected:
         df = df.copy()
         for col in injected:
-            df[col] = pd.NA
+            declared_dtype = table_contract[col].get("dtype", "str")
+            pandas_dtype = _INJECTION_DTYPE_MAP.get(declared_dtype, "string")
+            null_val = pd.NaT if declared_dtype in ("date", "datetime") else pd.NA
+            df[col] = pd.array([null_val] * len(df), dtype=pandas_dtype)
             logger.warning("Injected missing nullable column '%s'", col)
     return df, injected
 

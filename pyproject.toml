@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["src/pipeline.py"]
+
+[tool.coverage.report]
+fail_under = 90
+omit = ["src/pipeline.py"]

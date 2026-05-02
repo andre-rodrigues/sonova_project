@@ -26,6 +26,19 @@ _SAMPLE_CONTRACTS = {
 _PII_SC_FIELDS = ["gender", "nationality", "marital_status"]
 _PII_S_FIELDS = ["first_name", "last_name", "national_id", "national_id_type"]
 
+# Extend contracts with a redact-treatment column for coverage of that code path
+_CONTRACTS_WITH_REDACT = {
+    "successfactors": {
+        "employee_personal": {
+            **_SAMPLE_CONTRACTS["successfactors"]["employee_personal"],
+            "notes": {
+                "dtype": "str", "nullable": True, "unique": False,
+                "tier": "SAFE", "treatment": "redact",
+            },
+        }
+    }
+}
+
 
 @pytest.fixture
 def personal_df():
@@ -98,6 +111,47 @@ def test_unknown_column_raises(hmac_secret):
     )
     with pytest.raises(ValueError, match="Undeclared columns"):
         validate_manifest_coverage(df, "successfactors/employee_personal", _SAMPLE_CONTRACTS)
+
+
+def test_redact_treatment_applied_by_apply_field_classification(hmac_secret):
+    """apply_field_classification must redact free-text columns with treatment=redact."""
+    df = pd.DataFrame(
+        {
+            "employee_id": ["EMP001"],
+            "first_name": ["Anna"],
+            "last_name": ["Mueller"],
+            "date_of_birth": pd.to_datetime(["1985-03-14"]),
+            "gender": ["Female"],
+            "nationality": ["Swiss"],
+            "marital_status": ["Married"],
+            "national_id": ["756.1234.5678.90"],
+            "national_id_type": ["AHV"],
+            "last_modified": pd.to_datetime(["2024-12-01"]),
+            "notes": ["Contact user@example.com for details"],
+        }
+    )
+    result = apply_field_classification(
+        df, "successfactors/employee_personal", _CONTRACTS_WITH_REDACT, hmac_secret, "internal"
+    )
+    assert "notes" in result.columns
+    assert "user@example.com" not in result["notes"].iloc[0]
+    assert "[REDACTED]" in result["notes"].iloc[0]
+
+
+def test_contract_col_absent_from_df_is_skipped(hmac_secret):
+    """Columns declared in the contract but absent from the DataFrame are silently skipped."""
+    df = pd.DataFrame(
+        {
+            "employee_id": ["EMP001"],
+            "last_modified": pd.to_datetime(["2024-12-01"]),
+            # all other declared columns intentionally absent
+        }
+    )
+    result = apply_field_classification(
+        df, "successfactors/employee_personal", _SAMPLE_CONTRACTS, hmac_secret, "internal"
+    )
+    assert "employee_id" in result.columns
+    assert "last_modified" in result.columns
 
 
 def test_ingested_at_exempt_from_coverage_check(hmac_secret):
