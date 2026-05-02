@@ -1,0 +1,19 @@
+services:
+  pipeline:
+    build: .
+    volumes:
+      - ./data:/app/data:ro
+      - ./output:/app/output
+      - ./audit:/app/audit
+    environment:
+      - PIPELINE_HMAC_SECRET=${PIPELINE_HMAC_SECRET}
+
+  test:
+    build: .
+    command: pytest tests/ -v --cov=src --cov-report=term-missing
+    volumes:
+      - ./data:/app/data:ro
+      - ./output:/app/output
+      - ./audit:/app/audit
+    environment:
+      - PIPELINE_HMAC_SECRET=test-secret

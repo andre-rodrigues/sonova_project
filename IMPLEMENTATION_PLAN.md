@@ -36,12 +36,12 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ## Phase 0 — Project Scaffolding
 
-- [ ] `requirements.txt` — pandas, duckdb, pyarrow, pyyaml, pytest, python-dotenv (pinned)
-- [ ] `Dockerfile` — python:3.11-slim, COPY src/ config/ data/ queries/, CMD python -m src.pipeline
-- [ ] `docker-compose.yml` — services: pipeline, test (volumes: data ro, output, audit)
-- [ ] `src/__init__.py`, `src/ingest/__init__.py`, `src/transform/__init__.py`, `src/serve/__init__.py`
-- [ ] `tests/__init__.py`, `tests/gdpr/__init__.py`, `tests/dq/__init__.py`, `tests/pipeline/__init__.py`
-- [ ] Directory stubs: `output/bronze/`, `output/silver/restricted/`, `output/silver/internal/`, `output/gold/`, `output/quarantine/`, `audit/`, `queries/`
+- [x] `requirements.txt` — pandas, duckdb, pyarrow, pyyaml, pytest, python-dotenv (pinned)
+- [x] `Dockerfile` — python:3.11-slim, COPY src/ config/ data/ queries/, CMD python -m src.pipeline
+- [x] `docker-compose.yml` — services: pipeline, test (volumes: data ro, output, audit)
+- [x] `src/__init__.py`, `src/ingest/__init__.py`, `src/transform/__init__.py`, `src/serve/__init__.py`
+- [x] `tests/__init__.py`, `tests/gdpr/__init__.py`, `tests/dq/__init__.py`, `tests/pipeline/__init__.py`
+- [x] Directory stubs: `output/bronze/`, `output/silver/restricted/`, `output/silver/internal/`, `output/gold/`, `output/quarantine/`, `audit/`, `queries/`
 
 ---
 
