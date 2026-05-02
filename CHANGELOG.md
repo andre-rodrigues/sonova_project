@@ -154,3 +154,56 @@ the current state of the project and why decisions were made.
 ### AI Usage
 - Implementation by Claude Code; two contract fixes required based on actual source data.
   Both deviations documented above. Smoke tested against all 14 source CSVs: 14/14 passed.
+
+## [2026-05-05] — Phases 3 & 4: Governance Module + DQ Checks
+
+### Added
+- `src/transform/governance.py` — full governance module:
+  - `load_hmac_secret()` — reads `PIPELINE_HMAC_SECRET`; raises `EnvironmentError` if missing;
+    logs 4-char fingerprint only
+  - `pseudonymise(value, secret)` — HMAC-SHA256, 16-char hex output; consistent per run
+  - `redact_free_text(text)` — 7 compiled patterns (Swiss AHV, UK NI, French SSN, email, IBAN,
+    INS-ref, bank account); returns `(redacted_text, n_replacements)`
+  - `apply_field_classification(df, table_key, contracts, secret, layer)` — tier-aware:
+    PII-SC/PII-S dropped from internal; PII-SC dropped from restricted; PII-S pseudonymised
+    in restricted; generalise_to_year renames date_of_birth → birth_year; redact applied
+    to free-text fields at both layers
+  - `validate_manifest_coverage(df, table_key, contracts)` — raises `ValueError` for undeclared
+    columns; exempts `_ingested_at` and `_source_file`
+
+- `src/transform/dq_checks.py` — all 25 DQ checks + orchestrator:
+  - Single-table checks (DQ-01/02/03/04/06/07/08/09/10/12/15/19/20/21/22/23): each returns
+    `(clean_df, quarantine_df)`; quarantine rows include `dq_rule_id`, `dq_reason`,
+    `dq_source_table`, `dq_detected_at`
+  - Cross-table checks (DQ-05/11/13/14/16/17/18/24/25): nullify or quarantine orphan/sentinel rows
+  - `run_all_checks(bronze, dq_config, output_dir)` — chains all checks in correct dependency order;
+    writes quarantine parquet atomically to `output/quarantine/<table>_quarantine.parquet`
+
+- `tests/conftest.py` — shared fixtures: `employees_clean`, `employees_with_duplicate_pk`,
+  `employees_with_future_hire_date`, `compensation_with_negative_salary`,
+  `employee_personal_with_pii`, `tickets_with_pii_in_description`,
+  `absence_requests_inverted_dates`
+
+- `tests/gdpr/conftest.py` — `hmac_secret` fixture (monkeypatches env var)
+- `tests/gdpr/test_pseudonymisation.py` — 8 tests: deterministic, different-secrets, no-raw-value,
+  secret-required, empty-raises, 16-hex-chars, bytes-return
+- `tests/gdpr/test_redaction.py` — 11 tests covering all 7 patterns and edge cases
+- `tests/gdpr/test_pii_exclusion.py` — parametrised PII-S/SC absence from internal; PII-SC
+  absence from restricted; DOB→birth_year generalisation; pseudonymised-in-restricted; unknown-column-raises
+- `tests/gdpr/test_access_control.py` — 5 permission tests (700/700/750/755/700)
+- `tests/dq/conftest.py` — table-specific fixtures for DQ check tests
+- `tests/dq/test_duplicates.py` — DQ-01/10/15/20 (13 tests)
+- `tests/dq/test_domain_values.py` — DQ-02/03/04/06/07/08/09/19/21 (16 tests)
+- `tests/dq/test_standardisation.py` — DQ-22 (7 tests)
+- `tests/dq/test_temporal_consistency.py` — DQ-12/23 (8 tests)
+
+### Governance
+- `apply_field_classification` implements two-layer logic: internal drops PII-SC+PII-S entirely;
+  restricted drops PII-SC (Art. 9) and pseudonymises PII-S. This is stricter than the treatment
+  field alone — tier takes precedence over treatment for exclusion decisions.
+- French SSN regex expects exactly 15 digits (1+2+2+5+3+2); verified against test data.
+- Bank account pattern `\b\d{3,8}-\d{5,12}\b` catches "Mizuho 1234-5678901" format found
+  in servicenow/ticket_comments.csv CMT018.
+
+### AI Usage
+- Branch `feat/silver-governance-dq` opened. All 86 tests pass in 0.19s.
