@@ -207,3 +207,45 @@ the current state of the project and why decisions were made.
 
 ### AI Usage
 - Branch `feat/silver-governance-dq` opened. All 86 tests pass in 0.19s.
+
+## [2026-05-05] — Phases 5 & 6: Dimensions and Facts
+
+### Added
+- `src/transform/dimensions.py` — pure silver layer dimension builders (no I/O, no logging):
+  - `build_dim_employee()` — SCD Type 2; one row per employee×job-assignment period;
+    returns `(dim_employee_internal, dim_employee_restricted)` pair;
+    `employee_sk` = UUID5(employee_id|effective_from), `employee_nk` = UUID5(employee_id);
+    effective_to derived from `end_date` or `termination_date - 1 day`;
+    birth_year in internal; national_id/national_id_type pseudonymised in restricted
+  - `build_dim_department()` — nullifies orphan parent_department_id (e.g. D10→D99);
+    inactive rows (D09) retained and queryable
+  - `build_dim_job()` — maps empty job_title to "Unknown" (JC14 fix)
+  - `build_dim_location()` — adds `is_complete` boolean flag (False for LOC07 Remote-DACH)
+
+- `src/transform/facts.py` — pure silver layer fact builders:
+  - `resolve_employee_sk()` — SCD2-aware lookup by employee_nk + event_date
+  - `build_fact_absence()` — sensitive absence types (AT02/04/05/08) replaced with
+    `is_sensitive_absence=True`; absence_type_id nullified; notes excluded; employee_sk resolved
+  - `build_fact_hr_tickets()` — description redacted via `redact_free_text`; comment count
+    joined from ticket_comments; SLA metadata joined from ticket_categories;
+    caller_employee_id replaced by caller_employee_sk
+
+- `tests/pipeline/test_dimensions.py` — 23 tests:
+  SCD2 grain, effective dates, is_current, employee_nk stability, sk uniqueness,
+  PII absent from internal, birth_year present, national_id pseudonymised in restricted,
+  orphan parent nullified, JC14 title fixed, LOC07 is_complete flag
+
+- `tests/pipeline/test_facts.py` — 18 tests:
+  resolve_employee_sk period selection, absence sensitive masking, notes exclusion,
+  employee_sk resolution, ticket description redaction, comment count join, SLA join
+
+### Governance
+- `build_dim_employee` internal layer excludes `employee_id` — only surrogate keys
+  (`employee_sk`, `employee_nk`) are present, fulfilling the requirement that the
+  mapping to raw identifiers lives exclusively in `silver/restricted/`.
+- Sensitive absence types never disclosed in `fact_absence` — replaced by boolean flag
+  before any downstream consumption.
+
+### AI Usage
+- Branch `feat/silver-dimensions-facts` opened. All 127 tests pass in 0.35s.
+- Coding standards applied: pure functions, 40-line limit, type hints, docstrings.
