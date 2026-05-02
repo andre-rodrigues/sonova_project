@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from src.transform.governance import load_hmac_secret, pseudonymise

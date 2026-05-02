@@ -241,6 +241,31 @@ def _stage6_permissions() -> None:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _mark_failed(audit: dict, exc: BaseException) -> None:
+    audit["status"] = "failed"
+    audit["error_detail"] = str(exc)
+    audit["completed_at"] = datetime.now(tz=timezone.utc).isoformat()
+
+
+def _run_stages(contracts: dict, dq_rules: dict, secret: bytes, audit: dict) -> None:
+    """Execute all pipeline stages, updating audit in place."""
+    bronze_dfs, audit["bronze"] = _stage1_bronze(contracts)
+
+    clean_dfs, quarantine_dfs = _stage2_dq(bronze_dfs, dq_rules)
+    audit["dq"] = {
+        "tables_with_quarantine": list(quarantine_dfs.keys()),
+        "total_quarantine_rows": sum(len(v) for v in quarantine_dfs.values()),
+    }
+
+    dim_paths = _stage3_silver_dims(clean_dfs, contracts, secret)
+    dim_employee = pd.read_parquet(dim_paths["dim_employee"])
+    fact_paths = _stage4_silver_facts(clean_dfs, dim_employee, dq_rules, contracts, secret)
+
+    gold_views = _stage5_gold(dim_paths, fact_paths)
+    audit["gold"] = {"views_materialised": gold_views}
+    _stage6_permissions()
+
+
 def main() -> None:
     """Run the full pipeline end-to-end."""
     run_id = str(uuid.uuid4())
@@ -249,46 +274,22 @@ def main() -> None:
 
     try:
         logger.info("Pipeline starting — run_id=%s", run_id)
-
         contracts, dq_rules = _load_config()
         validate_contract_definition(contracts)
         secret = load_hmac_secret()
-
-        bronze_dfs, bronze_audit = _stage1_bronze(contracts)
-        audit["bronze"] = bronze_audit
-
-        clean_dfs, quarantine_dfs = _stage2_dq(bronze_dfs, dq_rules)
-        audit["dq"] = {
-            "tables_with_quarantine": list(quarantine_dfs.keys()),
-            "total_quarantine_rows": sum(len(v) for v in quarantine_dfs.values()),
-        }
-
-        dim_paths = _stage3_silver_dims(clean_dfs, contracts, secret)
-        dim_employee = pd.read_parquet(dim_paths["dim_employee"])
-
-        fact_paths = _stage4_silver_facts(clean_dfs, dim_employee, dq_rules, contracts, secret)
-
-        gold_views = _stage5_gold(dim_paths, fact_paths)
-        audit["gold"] = {"views_materialised": gold_views}
-
-        _stage6_permissions()
-
+        _run_stages(contracts, dq_rules, secret, audit)
         audit["status"] = "success"
         audit["completed_at"] = datetime.now(tz=timezone.utc).isoformat()
         logger.info("Pipeline complete — run_id=%s", run_id)
 
     except (ContractBreachError, EnvironmentError) as exc:
-        audit["status"] = "failed"
-        audit["error_detail"] = str(exc)
-        audit["completed_at"] = datetime.now(tz=timezone.utc).isoformat()
+        _mark_failed(audit, exc)
         logger.error("Pipeline failed: %s", exc)
         _write_audit(run_id, started_at, audit)
         sys.exit(1)
 
     except Exception as exc:
-        audit["status"] = "failed"
-        audit["error_detail"] = str(exc)
-        audit["completed_at"] = datetime.now(tz=timezone.utc).isoformat()
+        _mark_failed(audit, exc)
         logger.error("Unexpected pipeline error", exc_info=True)
         _write_audit(run_id, started_at, audit)
         raise

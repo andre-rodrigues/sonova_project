@@ -7,7 +7,6 @@ return DataFrames with no file I/O, logging, or side effects.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 import pandas as pd
 
@@ -103,27 +102,6 @@ def _join_categories(tickets_df: pd.DataFrame, categories_df: pd.DataFrame) -> p
 # ---------------------------------------------------------------------------
 # Public fact builders
 # ---------------------------------------------------------------------------
-
-def resolve_employee_sk(
-    nk: str,
-    event_date: pd.Timestamp,
-    dim_employee: pd.DataFrame,
-) -> Optional[str]:
-    """Return the employee_sk active on event_date for a given employee_nk.
-
-    Returns None if no matching SCD2 period is found.
-    """
-    ef = pd.to_datetime(dim_employee["effective_from"])
-    et = pd.to_datetime(dim_employee["effective_to"])
-    ed = pd.to_datetime(event_date)
-    mask = (
-        (dim_employee["employee_nk"] == nk)
-        & (ef <= ed)
-        & (et.isna() | (et >= ed))
-    )
-    matches = dim_employee.loc[mask, "employee_sk"]
-    return str(matches.iloc[0]) if not matches.empty else None
-
 
 def build_fact_absence(
     absence_df: pd.DataFrame,

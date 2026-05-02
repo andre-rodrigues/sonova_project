@@ -8,7 +8,6 @@ import pytest
 from src.transform.facts import (
     build_fact_absence,
     build_fact_hr_tickets,
-    resolve_employee_sk,
 )
 
 _NS = uuid.NAMESPACE_OID
@@ -120,34 +119,6 @@ def categories_df():
             "assignment_group": ["HR Operations", "Payroll Team"],
         }
     )
-
-
-# ---------------------------------------------------------------------------
-# resolve_employee_sk
-# ---------------------------------------------------------------------------
-
-def test_resolve_sk_within_period(dim_employee):
-    nk = _make_nk("EMP001")
-    sk = resolve_employee_sk(nk, pd.Timestamp("2020-06-01"), dim_employee)
-    assert sk == _make_sk("EMP001", "2018-03-15")
-
-
-def test_resolve_sk_second_period(dim_employee):
-    nk = _make_nk("EMP001")
-    sk = resolve_employee_sk(nk, pd.Timestamp("2023-01-01"), dim_employee)
-    assert sk == _make_sk("EMP001", "2022-01-01")
-
-
-def test_resolve_sk_open_ended_period(dim_employee):
-    nk = _make_nk("EMP002")
-    sk = resolve_employee_sk(nk, pd.Timestamp("2025-01-01"), dim_employee)
-    assert sk == _make_sk("EMP002", "2019-06-01")
-
-
-def test_resolve_sk_no_match_returns_none(dim_employee):
-    nk = _make_nk("EMP999")
-    result = resolve_employee_sk(nk, pd.Timestamp("2024-01-01"), dim_employee)
-    assert result is None
 
 
 # ---------------------------------------------------------------------------

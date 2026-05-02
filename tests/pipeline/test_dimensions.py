@@ -1,7 +1,6 @@
 """Tests for silver layer dimension builders (Phase 5)."""
 
 import uuid
-from datetime import date
 
 import pandas as pd
 import pytest

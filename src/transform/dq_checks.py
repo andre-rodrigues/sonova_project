@@ -433,141 +433,172 @@ def _write_quarantine(df: pd.DataFrame, table_name: str, output_dir: Path) -> No
     tmp.rename(dest)
 
 
+def _accumulate(
+    clean: dict, quarantine: dict, key: str, c: pd.DataFrame, q: pd.DataFrame
+) -> None:
+    clean[key] = c
+    if not q.empty:
+        quarantine[key] = pd.concat([quarantine.get(key, pd.DataFrame()), q], ignore_index=True)
+
+
+def _run_sf_employees_checks(
+    clean: dict, quarantine: dict, sentinel_ids: list[str]
+) -> pd.DataFrame:
+    """Run employees table checks; return the post-check employees DataFrame."""
+    if "successfactors/employees" not in clean:
+        return pd.DataFrame()
+    k = "successfactors/employees"
+    c, q = check_dq01_duplicate_employee_id(clean[k], k)
+    _accumulate(clean, quarantine, k, c, q)
+    c, q = check_dq02_future_hire_date(clean[k], k)
+    _accumulate(clean, quarantine, k, c, q)
+    c, q = check_dq23_status_vs_termination(clean[k], k)
+    _accumulate(clean, quarantine, k, c, q)
+    c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
+    _accumulate(clean, quarantine, k, c, q)
+    return clean[k]
+
+
+def _run_sf_person_checks(
+    clean: dict,
+    quarantine: dict,
+    sf_emp: pd.DataFrame,
+    sentinel_ids: list[str],
+    min_working_age: int,
+    dob_cutoff: str,
+) -> None:
+    """Run SuccessFactors personal and contact DQ checks."""
+    if "successfactors/employee_personal" in clean:
+        k = "successfactors/employee_personal"
+        c, q = check_dq03_implausible_dob(clean[k], min_working_age, k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq04_ancient_dob(clean[k], dob_cutoff, k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq22_gender_standardisation(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        if not sf_emp.empty:
+            c, q = check_dq05_ghost_employee_personal(clean[k], sf_emp, k)
+            _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
+        _accumulate(clean, quarantine, k, c, q)
+    if "successfactors/employee_contact" in clean:
+        k = "successfactors/employee_contact"
+        c, q = check_dq08_invalid_email(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq09_invalid_phone(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq10_duplicate_contact(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
+        _accumulate(clean, quarantine, k, c, q)
+
+
+def _run_sf_org_checks(
+    clean: dict,
+    quarantine: dict,
+    sf_emp: pd.DataFrame,
+    sentinel_ids: list[str],
+) -> None:
+    """Run SuccessFactors job, compensation, and department DQ checks."""
+    if "successfactors/employee_job" in clean:
+        k = "successfactors/employee_job"
+        c, q = check_dq12_overlapping_jobs(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        if not sf_emp.empty:
+            c, q = check_dq11_orphan_manager(clean[k], sf_emp, k)
+            _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
+        _accumulate(clean, quarantine, k, c, q)
+    if "successfactors/employee_compensation" in clean:
+        k = "successfactors/employee_compensation"
+        c, q = check_dq06_negative_salary(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq07_zero_salary_null_grade(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
+        _accumulate(clean, quarantine, k, c, q)
+    if "successfactors/departments" in clean:
+        k = "successfactors/departments"
+        c, q = check_dq13_orphan_parent_dept(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        if not sf_emp.empty:
+            c, q = check_dq14_orphan_dept_manager(clean[k], sf_emp, k)
+            _accumulate(clean, quarantine, k, c, q)
+
+
+def _run_servicenow_checks(
+    clean: dict,
+    quarantine: dict,
+    sf_emp: pd.DataFrame,
+    sentinel_ids: list[str],
+) -> None:
+    """Run ServiceNow ticket and comment DQ checks."""
+    sn_tickets = pd.DataFrame()
+    if "servicenow/tickets" in clean:
+        k = "servicenow/tickets"
+        c, q = check_dq15_duplicate_ticket(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        if not sf_emp.empty:
+            c, q = check_dq16_orphan_ticket_caller(clean[k], sf_emp, k)
+            _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "caller_employee_id", k)
+        _accumulate(clean, quarantine, k, c, q)
+        sn_tickets = clean[k]
+    if "servicenow/ticket_comments" in clean and not sn_tickets.empty:
+        k = "servicenow/ticket_comments"
+        c, q = check_dq17_orphan_ticket_comment(clean[k], sn_tickets, k)
+        _accumulate(clean, quarantine, k, c, q)
+
+
+def _run_atoss_checks(
+    clean: dict,
+    quarantine: dict,
+    sf_emp: pd.DataFrame,
+    at_types: pd.DataFrame,
+    sentinel_ids: list[str],
+) -> None:
+    """Run ATOSS absence and time-entry DQ checks."""
+    if "atoss/absence_requests" in clean:
+        k = "atoss/absence_requests"
+        c, q = check_dq19_inverted_absence_dates(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        if not at_types.empty:
+            c, q = check_dq18_orphan_absence_type(clean[k], at_types, k)
+            _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
+        _accumulate(clean, quarantine, k, c, q)
+    if "atoss/time_entries" in clean:
+        k = "atoss/time_entries"
+        c, q = check_dq20_duplicate_time_entry(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq21_overnight_time_entry(clean[k], k)
+        _accumulate(clean, quarantine, k, c, q)
+        if not sf_emp.empty:
+            c, q = check_dq24_post_termination_entries(clean[k], sf_emp, k)
+            _accumulate(clean, quarantine, k, c, q)
+        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
+        _accumulate(clean, quarantine, k, c, q)
+
+
 def run_all_checks(
     bronze: dict,
     dq_config: dict,
     output_dir: Path,
 ) -> tuple[dict, dict]:
+    """Run all DQ checks across all source tables; return (clean, quarantine) dicts."""
     clean: dict[str, pd.DataFrame] = dict(bronze)
     quarantine: dict[str, pd.DataFrame] = {}
     sentinel_ids: list[str] = dq_config.get("sentinel_employee_ids", [])
     min_working_age: int = dq_config.get("min_working_age", 16)
     dob_cutoff: str = dq_config.get("implausible_dob_cutoff", "1900-01-02")
-
-    def _accumulate(key: str, c: pd.DataFrame, q: pd.DataFrame) -> None:
-        clean[key] = c
-        if not q.empty:
-            quarantine[key] = pd.concat([quarantine.get(key, pd.DataFrame()), q], ignore_index=True)
-
-    sf_emp = clean.get("successfactors/employees", pd.DataFrame())
     at_types = clean.get("atoss/absence_types", pd.DataFrame())
-    sn_tickets_clean_ref = clean.get("servicenow/tickets", pd.DataFrame())
 
-    # --- successfactors/employees ---
-    if "successfactors/employees" in clean:
-        k = "successfactors/employees"
-        c, q = check_dq01_duplicate_employee_id(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq02_future_hire_date(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq23_status_vs_termination(clean[k], k)
-        _accumulate(k, c, q)
-        # DQ-25 sentinels
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
-        _accumulate(k, c, q)
-        sf_emp = clean[k]
+    sf_emp = _run_sf_employees_checks(clean, quarantine, sentinel_ids)
+    _run_sf_person_checks(clean, quarantine, sf_emp, sentinel_ids, min_working_age, dob_cutoff)
+    _run_sf_org_checks(clean, quarantine, sf_emp, sentinel_ids)
+    _run_servicenow_checks(clean, quarantine, sf_emp, sentinel_ids)
+    _run_atoss_checks(clean, quarantine, sf_emp, at_types, sentinel_ids)
 
-    # --- successfactors/employee_personal ---
-    if "successfactors/employee_personal" in clean:
-        k = "successfactors/employee_personal"
-        c, q = check_dq03_implausible_dob(clean[k], min_working_age, k)
-        _accumulate(k, c, q)
-        c, q = check_dq04_ancient_dob(clean[k], dob_cutoff, k)
-        _accumulate(k, c, q)
-        c, q = check_dq22_gender_standardisation(clean[k], k)
-        _accumulate(k, c, q)
-        if not sf_emp.empty:
-            c, q = check_dq05_ghost_employee_personal(clean[k], sf_emp, k)
-            _accumulate(k, c, q)
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
-        _accumulate(k, c, q)
-
-    # --- successfactors/employee_contact ---
-    if "successfactors/employee_contact" in clean:
-        k = "successfactors/employee_contact"
-        c, q = check_dq08_invalid_email(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq09_invalid_phone(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq10_duplicate_contact(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
-        _accumulate(k, c, q)
-
-    # --- successfactors/employee_job ---
-    if "successfactors/employee_job" in clean:
-        k = "successfactors/employee_job"
-        c, q = check_dq12_overlapping_jobs(clean[k], k)
-        _accumulate(k, c, q)
-        if not sf_emp.empty:
-            c, q = check_dq11_orphan_manager(clean[k], sf_emp, k)
-            _accumulate(k, c, q)
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
-        _accumulate(k, c, q)
-
-    # --- successfactors/employee_compensation ---
-    if "successfactors/employee_compensation" in clean:
-        k = "successfactors/employee_compensation"
-        c, q = check_dq06_negative_salary(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq07_zero_salary_null_grade(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
-        _accumulate(k, c, q)
-
-    # --- successfactors/departments ---
-    if "successfactors/departments" in clean:
-        k = "successfactors/departments"
-        c, q = check_dq13_orphan_parent_dept(clean[k], k)
-        _accumulate(k, c, q)
-        if not sf_emp.empty:
-            c, q = check_dq14_orphan_dept_manager(clean[k], sf_emp, k)
-            _accumulate(k, c, q)
-
-    # --- servicenow/tickets ---
-    if "servicenow/tickets" in clean:
-        k = "servicenow/tickets"
-        c, q = check_dq15_duplicate_ticket(clean[k], k)
-        _accumulate(k, c, q)
-        if not sf_emp.empty:
-            c, q = check_dq16_orphan_ticket_caller(clean[k], sf_emp, k)
-            _accumulate(k, c, q)
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "caller_employee_id", k)
-        _accumulate(k, c, q)
-        sn_tickets_clean_ref = clean[k]
-
-    # --- servicenow/ticket_comments ---
-    if "servicenow/ticket_comments" in clean:
-        k = "servicenow/ticket_comments"
-        if not sn_tickets_clean_ref.empty:
-            c, q = check_dq17_orphan_ticket_comment(clean[k], sn_tickets_clean_ref, k)
-            _accumulate(k, c, q)
-
-    # --- atoss/absence_requests ---
-    if "atoss/absence_requests" in clean:
-        k = "atoss/absence_requests"
-        c, q = check_dq19_inverted_absence_dates(clean[k], k)
-        _accumulate(k, c, q)
-        if not at_types.empty:
-            c, q = check_dq18_orphan_absence_type(clean[k], at_types, k)
-            _accumulate(k, c, q)
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
-        _accumulate(k, c, q)
-
-    # --- atoss/time_entries ---
-    if "atoss/time_entries" in clean:
-        k = "atoss/time_entries"
-        c, q = check_dq20_duplicate_time_entry(clean[k], k)
-        _accumulate(k, c, q)
-        c, q = check_dq21_overnight_time_entry(clean[k], k)
-        _accumulate(k, c, q)
-        if not sf_emp.empty:
-            c, q = check_dq24_post_termination_entries(clean[k], sf_emp, k)
-            _accumulate(k, c, q)
-        c, q = check_dq25_sentinel_records(clean[k], sentinel_ids, "employee_id", k)
-        _accumulate(k, c, q)
-
-    # Write quarantine files
     for table_name, q_df in quarantine.items():
         safe_name = table_name.replace("/", "_")
         _write_quarantine(q_df, safe_name, output_dir)
