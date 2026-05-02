@@ -6,7 +6,7 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 ---
 # Implementation Plan — People Analytics ETL Pipeline
 
-**Status:** Phases 0–4 complete. Phase 9 governance/DQ tests complete. Phase 5 next.
+**Status:** Phases 0–6 complete. Phase 9 governance/DQ/dimension/fact tests complete. Phase 7 next.
 **Why:** Technical assessment for Lead Data Engineer role. GDPR-sensitive HR data from 3 systems → medallion-layered analytical output (Bronze → Silver → Gold).
 
 **How to apply:** At the start of each session, read this file, find the first unchecked item in the current phase, and implement it. Mark `[x]` as you complete each item. Do not skip phases — each builds on the last.
@@ -205,7 +205,7 @@ Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_
 
 ## Phase 5 — Dimensions
 
-- [ ] `build_dim_employee(employees_df, job_df, personal_df, contracts, secret) -> tuple[pd.DataFrame, pd.DataFrame]`
+- [x] `build_dim_employee(employees_df, job_df, personal_df, contracts, secret) -> tuple[pd.DataFrame, pd.DataFrame]`
   - SCD Type 2: one row per employee×job-assignment period
   - `employee_sk` = UUID5(f"{employee_id}|{effective_from.isoformat()}")
   - `employee_nk` = UUID5(employee_id)
@@ -215,29 +215,29 @@ Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_
   - internal: no PII fields; birth_year (int) instead of date_of_birth
   - restricted: pseudonymised national_id, salary fields
 
-- [ ] `build_dim_department(departments_df, contracts) -> pd.DataFrame`
+- [x] `build_dim_department(departments_df, contracts) -> pd.DataFrame`
   - Nullify D10 orphan parent, flag D09 inactive
 
-- [ ] `build_dim_job(job_codes_df, contracts) -> pd.DataFrame`
+- [x] `build_dim_job(job_codes_df, contracts) -> pd.DataFrame`
   - JC14 empty title → "Unknown"
 
-- [ ] `build_dim_location(locations_df, contracts) -> pd.DataFrame`
+- [x] `build_dim_location(locations_df, contracts) -> pd.DataFrame`
   - LOC07 → is_complete=False
 
 ---
 
 ## Phase 6 — Facts
 
-- [ ] `resolve_employee_sk(nk: str, event_date: date, dim_employee: pd.DataFrame) -> str | None`
+- [x] `resolve_employee_sk(nk: str, event_date: date, dim_employee: pd.DataFrame) -> str | None`
   — join on employee_nk + event_date within [effective_from, effective_to]
 
-- [ ] `build_fact_absence(absence_df, dim_employee, contracts, secret) -> pd.DataFrame`
+- [x] `build_fact_absence(absence_df, dim_employee, contracts, secret) -> pd.DataFrame`
   - One row per absence_id
   - Replace AT02/AT04/AT05/AT08 absence_type_id → is_sensitive_absence=True
   - Exclude notes column entirely
   - Resolve employee_sk via event date
 
-- [ ] `build_fact_hr_tickets(tickets_df, comments_df, categories_df, dim_employee, contracts, secret) -> pd.DataFrame`
+- [x] `build_fact_hr_tickets(tickets_df, comments_df, categories_df, dim_employee, contracts, secret) -> pd.DataFrame`
   - One row per ticket_id
   - Redact description (`governance.redact_free_text`)
   - Resolve employee_sk for caller
@@ -307,8 +307,8 @@ Uses DuckDB in-memory to aggregate from silver Parquet files.
   - Coverage validation: `validate_manifest_coverage` raises `ContractBreachError` on undeclared column; passes when only `_ingested_at`/`_source_file` extras present
   - Nullable injection: `inject_missing_nullable_columns` injects `pd.NA` for absent `nullable: true` column; does NOT inject for absent `nullable: false` column
   - Pandera integration: dtype mismatch on non-nullable column → `ContractBreachError`; check fails on nullable column → `status: "warning"`; clean data → `status: "passed"`
-- [ ] `test_dimensions.py` — SCD2 grain, effective dates, is_current, employee_nk stable, sk unique, no PII in internal, sentinels excluded, EMP017 corrected, birth_year present
-- [ ] `test_facts.py` — grain, sensitive type masked, notes excluded, inverted dates excluded, employee_sk present, correct version resolved
+- [x] `test_dimensions.py` — SCD2 grain, effective dates, is_current, employee_nk stable, sk unique, no PII in internal, sentinels excluded, EMP017 corrected, birth_year present
+- [x] `test_facts.py` — grain, sensitive type masked, notes excluded, inverted dates excluded, employee_sk present, correct version resolved
 - [ ] `test_gold.py` — no individual rows, uses is_current, excludes terminated, no test records, absence rate aggregated, _generated_at present
 - [ ] `test_integration.py` — single end-to-end smoke test on synthetic fixtures covering all 14 tables; asserts bronze parquet written, quarantine contains known-bad records (EMP003-dup, COMP028, TKT019, ABS021), silver dimensions written, gold views materialised, audit log written with `status: "success"`; cross-table DQ checks verified incidentally through quarantine file content
 
