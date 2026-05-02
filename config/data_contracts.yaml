@@ -1,0 +1,791 @@
+# field_classification.yaml
+#
+# Single source of truth for both:
+#   1. Data contract — schema shape validated by pandera at bronze load time
+#   2. PII classification — governance treatment applied at silver layer
+#
+# Every column entry carries both schema contract keys (dtype, nullable, unique, checks)
+# and governance keys (tier, treatment). No split configs.
+#
+# --- Schema contract keys ---
+# dtype:    str | int | float | bool | date | datetime | time
+#   str      → pa.String  / object
+#   int      → pa.Int64   / int64
+#   float    → pa.Float64 / float64
+#   bool     → pa.Bool    / bool
+#   date     → pa.DateTime / datetime64[ns]  (date portion; cast by bronze loader)
+#   datetime → pa.DateTime / datetime64[ns]  (full timestamp)
+#   time     → pa.String  / object           (HH:MM string; kept as str at bronze)
+# nullable: true | false — whether the column accepts null/NaN
+# unique:   true | false — true only for PKs and declared-unique columns
+# checks:   optional list of "operator:value" constraint strings
+#   ge:0             → pa.Check.ge(0)
+#   gt:0             → pa.Check.gt(0)
+#   isin:["a","b"]   → pa.Check.isin([...])
+#   str_matches:<re> → pa.Check.str_matches(...)
+#   Checks fire on non-null values only (pandera default).
+#
+# --- PII classification keys ---
+# tier:      PII-SC | PII-S | PII | IND | SAFE
+# treatment: exclude | pseudonymise | generalise_to_year | redact | passthrough
+#
+# _contract_version: semver string at table level; recorded in every audit run.
+#   MAJOR bump = breaking change (column removed, dtype changed, nullable tightened).
+#   MINOR bump = non-breaking addition (new nullable column, constraint relaxed).
+#   PATCH      = comment/doc correction only; no schema effect.
+#   Contract YAML must be committed BEFORE the upstream source delivers the change.
+#
+# Pipeline metadata columns (_ingested_at, _source_file) are added by the bronze loader
+# and are skipped by manifest validation and contract validation alike.
+
+successfactors:
+
+  employees:
+    _contract_version: "1.0.0"
+    employee_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: IND
+      treatment: passthrough   # cross-system spine; pseudonymised via surrogate key
+    user_id:
+      dtype: str
+      nullable: false
+      unique: true          # SSO login handle — one per employee
+      tier: PII
+      treatment: pseudonymise
+    hire_date:
+      dtype: date
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    termination_date:
+      dtype: date
+      nullable: true        # null for active employees
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    employment_status:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    employment_type:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    company_code:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    created_at:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  employee_personal:
+    _contract_version: "1.0.0"
+    employee_id:
+      dtype: str
+      nullable: false
+      unique: true          # one personal record per employee
+      tier: IND
+      treatment: passthrough
+    first_name:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: PII
+      treatment: pseudonymise
+    last_name:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: PII
+      treatment: pseudonymise
+    date_of_birth:
+      dtype: date
+      nullable: true        # may be absent for legacy records
+      unique: false
+      tier: PII
+      treatment: generalise_to_year   # only birth_year (int) in internal
+    gender:
+      dtype: str
+      nullable: true        # DQ-22 maps blank → Unknown; nullable at source
+      unique: false
+      tier: PII-SC
+      treatment: exclude    # GDPR Art. 9 — never stored in any silver layer
+    nationality:
+      dtype: str
+      nullable: true
+      unique: false
+      tier: PII-SC
+      treatment: exclude    # often treated as ethnic-origin proxy
+    marital_status:
+      dtype: str
+      nullable: true
+      unique: false
+      tier: PII-SC
+      treatment: exclude    # family status — restricted under local laws
+    national_id:
+      dtype: str
+      nullable: true        # not all employees have a national ID on file
+      unique: false
+      tier: PII-S
+      treatment: pseudonymise   # AHV, INSEE, NINO, Aadhaar, etc.
+    national_id_type:
+      dtype: str
+      nullable: true        # absent when national_id is absent
+      unique: false
+      tier: PII-S
+      treatment: pseudonymise   # reveals ID scheme; pseudonymise alongside national_id
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  employee_contact:
+    _contract_version: "1.0.0"
+    contact_detail_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    employee_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough
+    contact_type:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    contact_value:
+      dtype: str
+      nullable: true        # DQ-08/09 nullifies invalid emails and phones; keep row
+      unique: false
+      tier: PII
+      treatment: pseudonymise   # email address or phone number
+    is_primary:
+      dtype: bool
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  employee_job:
+    _contract_version: "1.0.0"
+    job_entry_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    employee_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough
+    job_code:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    department_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    location_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    manager_id:
+      dtype: str
+      nullable: true        # top-level managers have no manager; DQ-11 nullifies orphans
+      unique: false
+      tier: IND
+      treatment: passthrough   # references employee_id spine
+    effective_date:
+      dtype: date
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    end_date:
+      dtype: date
+      nullable: true        # null for the current (open) job assignment
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    reason:
+      dtype: str
+      nullable: true        # may not always be provided by source
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    fte:
+      dtype: float
+      nullable: false
+      unique: false
+      checks: ["ge:0"]
+      tier: SAFE
+      treatment: passthrough
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  employee_compensation:
+    _contract_version: "1.0.0"
+    comp_entry_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    employee_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough
+    effective_date:
+      dtype: date
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    base_salary:
+      dtype: float
+      nullable: false
+      unique: false
+      checks: ["ge:0"]      # DQ-06 quarantines negatives downstream; contract sets type floor
+      tier: PII-S
+      treatment: pseudonymise   # personal financial data (Swiss DSG, German BDSG)
+    currency:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    pay_frequency:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    bonus_target_pct:
+      dtype: float
+      nullable: true        # absent for non-bonus-eligible employees
+      unique: false
+      checks: ["ge:0"]
+      tier: PII-S
+      treatment: pseudonymise
+    comp_grade:
+      dtype: str
+      nullable: true        # absent for some employees; DQ-07 flags salary=0 AND null grade
+      unique: false
+      tier: PII-S
+      treatment: pseudonymise
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  departments:
+    _contract_version: "1.0.0"
+    department_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    department_name:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    cost_center:
+      dtype: str
+      nullable: true        # some departments may not have a cost center
+      unique: false
+      tier: IND
+      treatment: passthrough   # indirect — can narrow to a small group
+    parent_department_id:
+      dtype: str
+      nullable: true        # root department has no parent; DQ-13 nullifies orphan refs
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    manager_employee_id:
+      dtype: str
+      nullable: true        # some departments may be unmanaged; DQ-14 nullifies orphan refs
+      unique: false
+      tier: IND
+      treatment: passthrough
+    status:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  job_codes:
+    _contract_version: "1.0.0"
+    job_code:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    job_title:
+      dtype: str
+      nullable: true        # JC14 has an empty title — dim builder maps to "Unknown"
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    job_family:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    grade_level:
+      dtype: str
+      nullable: true        # some job codes may not have a grade defined
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    is_manager_role:
+      dtype: bool
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  locations:
+    _contract_version: "1.0.0"
+    location_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    location_name:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    city:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough   # office/site city, not employee home address
+    country:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    country_code:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    timezone:
+      dtype: str
+      nullable: true        # LOC07 (Remote-DACH) has no timezone; flagged as is_complete=False
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    address:
+      dtype: str
+      nullable: true        # office address; may be incomplete (LOC07)
+      unique: false
+      tier: SAFE
+      treatment: passthrough   # office address, not employee home address
+    status:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+servicenow:
+
+  tickets:
+    _contract_version: "1.0.0"
+    ticket_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    number:
+      dtype: str
+      nullable: false
+      unique: true          # business key (e.g. INC0001234)
+      tier: SAFE
+      treatment: passthrough
+    caller_employee_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough
+    category_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    short_description:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    description:
+      dtype: str
+      nullable: true        # long-form description may be absent for simple tickets
+      unique: false
+      tier: PII-S
+      treatment: redact     # confirmed AHV/NI/insurance leaks; redact then store
+    priority:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    state:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    assigned_to:
+      dtype: str
+      nullable: true        # null when ticket is unassigned
+      unique: false
+      tier: IND
+      treatment: passthrough   # references employee_id spine
+    opened_at:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    resolved_at:
+      dtype: datetime
+      nullable: true        # null when ticket is unresolved
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    closed_at:
+      dtype: datetime
+      nullable: true        # null when ticket is still open
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    satisfaction_rating:
+      dtype: float
+      nullable: true        # null until the employee submits a rating
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  ticket_comments:
+    _contract_version: "1.0.0"
+    comment_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    ticket_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    author_employee_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough
+    comment_text:
+      dtype: str
+      nullable: true        # may be blank for system-generated comments
+      unique: false
+      tier: PII-S
+      treatment: redact     # confirmed SSN/bank/address/minor leaks
+    is_internal:
+      dtype: bool
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    created_at:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  ticket_categories:
+    _contract_version: "1.0.0"
+    category_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    category_name:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    subcategory:
+      dtype: str
+      nullable: true        # some top-level categories have no subcategory
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    sla_hours:
+      dtype: int
+      nullable: false
+      unique: false
+      checks: ["gt:0"]
+      tier: SAFE
+      treatment: passthrough
+    assignment_group:
+      dtype: str
+      nullable: true        # may not always be defined for all categories
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+atoss:
+
+  absence_requests:
+    _contract_version: "1.0.0"
+    absence_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    employee_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough
+    absence_type_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: PII-SC
+      treatment: exclude    # AT02/04/05/08 reveal health & family status;
+                            # fact builder replaces with is_sensitive_absence flag
+    start_date:
+      dtype: date
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    end_date:
+      dtype: date
+      nullable: false
+      unique: false         # DQ-19 quarantines rows where end_date < start_date
+      tier: SAFE
+      treatment: passthrough
+    days_requested:
+      dtype: float
+      nullable: false
+      unique: false
+      checks: ["ge:0"]      # fractional days for half-day absences; DQ-19 quarantines negatives
+      tier: SAFE
+      treatment: passthrough
+    status:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    approver_employee_id:
+      dtype: str
+      nullable: true        # auto-approved absences may have no explicit approver
+      unique: false
+      tier: IND
+      treatment: passthrough
+    notes:
+      dtype: str
+      nullable: true        # free-text health reasons; optional
+      unique: false
+      tier: PII-SC
+      treatment: redact     # free-text health reasons; redacted for audit counts,
+                            # then excluded from all silver outputs (PII-SC tier)
+    created_at:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  absence_types:
+    _contract_version: "1.0.0"
+    absence_type_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    absence_type_name:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    category:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    is_paid:
+      dtype: bool
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    requires_approval:
+      dtype: bool
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    max_days_per_year:
+      dtype: int
+      nullable: true        # null = no annual cap (e.g. sick leave without a limit)
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+
+  time_entries:
+    _contract_version: "1.0.0"
+    entry_id:
+      dtype: str
+      nullable: false
+      unique: true          # primary key
+      tier: SAFE
+      treatment: passthrough
+    employee_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough
+    entry_date:
+      dtype: date
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    clock_in:
+      dtype: time           # HH:MM string; kept as str at bronze layer
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    clock_out:
+      dtype: time           # HH:MM string; null when shift is still in progress
+      nullable: true        # DQ-21 flags clock_out < clock_in as overnight; row kept
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    break_minutes:
+      dtype: int
+      nullable: false
+      unique: false
+      checks: ["ge:0"]
+      tier: SAFE
+      treatment: passthrough
+    location_id:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: IND
+      treatment: passthrough   # combined with entry_date creates movement pattern
+    entry_type:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    status:
+      dtype: str
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
+    last_modified:
+      dtype: datetime
+      nullable: false
+      unique: false
+      tier: SAFE
+      treatment: passthrough
