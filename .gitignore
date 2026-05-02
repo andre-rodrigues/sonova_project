@@ -13,3 +13,4 @@ __pycache__/
 *.parquet.tmp
 .DS_Store
 metabase/data
+.claude/settings.local.json

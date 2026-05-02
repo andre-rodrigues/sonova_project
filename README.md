@@ -122,6 +122,43 @@ Matches are replaced with `[REDACTED]`. The redaction count per column is writte
 
 Quarantined rows are written to `output/quarantine/<table>_quarantine.parquet` with `dq_rule_id`, `dq_reason`, `dq_source_table`, and `dq_detected_at` columns.
 
+## Data Observability
+
+### Quarantine strategy
+
+Bad rows are never silently discarded — they are isolated in `output/quarantine/<table>_quarantine.parquet` alongside their clean counterparts so root causes can be investigated without losing the original data. Every quarantined row carries four metadata columns:
+
+| Column | Description |
+|--------|-------------|
+| `dq_rule_id` | Rule that triggered quarantine (e.g. `DQ-01`) |
+| `dq_reason` | Human-readable explanation (e.g. `Duplicate employee_id: EMP003`) |
+| `dq_source_table` | Fully-qualified source table (e.g. `successfactors/employees`) |
+| `dq_detected_at` | ISO-8601 UTC timestamp of detection |
+
+Quarantine files from all tables can be queried together to diagnose patterns:
+
+```sql
+-- Summarise quarantine violations across all tables
+SELECT dq_rule_id, dq_reason, COUNT(*) AS affected_rows
+FROM read_parquet('output/quarantine/*.parquet')
+GROUP BY ALL
+ORDER BY affected_rows DESC;
+```
+
+### Audit log
+
+Every pipeline run writes `audit/run_<timestamp>.json`. Files are append-only — each run creates a new file and prior runs are never overwritten, providing a complete history of pipeline executions.
+
+Each audit entry covers all seven pipeline stages:
+
+- **Bronze** — tables ingested, row counts per source table, data contract version applied
+- **DQ checks** — tables with quarantine rows, total quarantine count
+- **Silver / Gold** — dimensions and facts written, gold views materialised
+- **ClickHouse** — tables loaded, or skipped if `CLICKHOUSE_HOST` is not set
+- **Permissions** — access controls enforced
+
+On failure, the audit log records the error detail and the exact stage where the pipeline halted before exiting, making post-mortem diagnosis straightforward.
+
 ## Output Schema
 
 ### dim_employee (internal)

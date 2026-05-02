@@ -13,8 +13,8 @@
     ],
     "deny": [
       "Write(data/**)",
-      "Write(README.md)",
-      "Write(TASK.md)"
+      "Write(SONOVA_README.md)",
+      "Write(SONOVA_TASK.md)"
     ]
   },
   "env": {
