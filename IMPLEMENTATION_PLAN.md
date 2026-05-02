@@ -6,7 +6,7 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 ---
 # Implementation Plan — People Analytics ETL Pipeline
 
-**Status:** Phases 0–1 complete. Phase 2 in progress.
+**Status:** Phases 0–2 complete. Phase 3 next.
 **Why:** Technical assessment for Lead Data Engineer role. GDPR-sensitive HR data from 3 systems → medallion-layered analytical output (Bronze → Silver → Gold).
 
 **How to apply:** At the start of each session, read this file, find the first unchecked item in the current phase, and implement it. Mark `[x]` as you complete each item. Do not skip phases — each builds on the last.
@@ -62,15 +62,15 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ### Error type
 
-- [ ] `ContractBreachError(ValueError)` — defined at module top; raised on any breaking contract violation; caught by orchestrator to write FAILED audit entry and exit non-zero
+- [x] `ContractBreachError(ValueError)` — defined at module top; raised on any breaking contract violation; caught by orchestrator to write FAILED audit entry and exit non-zero
 
 ### Contract definition validation (runs at pipeline startup, before any CSV is read)
 
-- [ ] `validate_contract_definition(contracts: dict) -> None` — iterates every table block in `data_contracts.yaml`; asserts each table has `_contract_version` and each column entry has `dtype`, `nullable`, `unique`, `tier`, and `treatment`; raises `ValueError` listing all missing fields if any are absent
+- [x] `validate_contract_definition(contracts: dict) -> None` — iterates every table block in `data_contracts.yaml`; asserts each table has `_contract_version` and each column entry has `dtype`, `nullable`, `unique`, `tier`, and `treatment`; raises `ValueError` listing all missing fields if any are absent
 
 ### Schema generation (called per-table inside `load_csv`)
 
-- [ ] `build_pandera_schema(table_contract: dict) -> pa.DataFrameSchema` — generates a `pandera.DataFrameSchema` dynamically from the table's column entries; no hardcoded type definitions
+- [x] `build_pandera_schema(table_contract: dict) -> pa.DataFrameSchema` — generates a `pandera.DataFrameSchema` dynamically from the table's column entries; no hardcoded type definitions
 
 **dtype → pandera mapping:**
 
@@ -95,7 +95,7 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ### CSV load, type casting, and metadata append
 
-- [ ] `load_csv(source_path: Path, table_contract: dict) -> pd.DataFrame` — reads CSV with `pd.read_csv`; casts columns to declared dtype (dates → `datetime64[ns]`, booleans → `bool`); appends `_ingested_at` (UTC datetime) and `_source_file` (relative path string); raises `ContractBreachError` on any cast failure
+- [x] `load_csv(source_path: Path, table_contract: dict) -> pd.DataFrame` — reads CSV with `pd.read_csv`; casts columns to declared dtype (dates → `datetime64[ns]`, booleans → `bool`); appends `_ingested_at` (UTC datetime) and `_source_file` (relative path string); raises `ContractBreachError` on any cast failure
 
 **Date columns cast to `datetime64[ns]`:** hire_date, termination_date, effective_date, end_date, start_date, date_of_birth, entry_date, opened_at, resolved_at
 
@@ -103,15 +103,15 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ### Column coverage validation (fires before pandera schema validation)
 
-- [ ] `validate_manifest_coverage(df: pd.DataFrame, table_contract: dict, table_key: str) -> None` — computes `undeclared = set(df.columns) - set(contract_cols) - {"_ingested_at", "_source_file"}`; if non-empty, raises `ContractBreachError(f"Undeclared columns in {table_key}: {undeclared}")`; must be called before pandera
+- [x] `validate_manifest_coverage(df: pd.DataFrame, table_contract: dict, table_key: str) -> None` — computes `undeclared = set(df.columns) - set(contract_cols) - {"_ingested_at", "_source_file"}`; if non-empty, raises `ContractBreachError(f"Undeclared columns in {table_key}: {undeclared}")`; must be called before pandera
 
 ### Nullable column injection (before pandera)
 
-- [ ] `inject_missing_nullable_columns(df: pd.DataFrame, table_contract: dict) -> tuple[pd.DataFrame, list[str]]` — for each column declared `nullable: true` that is absent from `df`, injects `df[col] = pd.NA`; returns `(modified_df, list_of_injected_col_names)`; columns declared `nullable: false` that are absent are left for pandera to catch as breaking violations
+- [x] `inject_missing_nullable_columns(df: pd.DataFrame, table_contract: dict) -> tuple[pd.DataFrame, list[str]]` — for each column declared `nullable: true` that is absent from `df`, injects `df[col] = pd.NA`; returns `(modified_df, list_of_injected_col_names)`; columns declared `nullable: false` that are absent are left for pandera to catch as breaking violations
 
 ### Contract validation (pandera, runs after casting and injection)
 
-- [ ] `validate_contract(df: pd.DataFrame, schema: pa.DataFrameSchema, table_contract: dict, table_key: str) -> dict` — runs `schema.validate(df, lazy=True)` to collect all errors; classifies each `SchemaError` per the table below; returns `{"status": "passed"|"warning"|"breaking", "detail": [...]}`; does NOT raise — caller decides
+- [x] `validate_contract(df: pd.DataFrame, schema: pa.DataFrameSchema, table_contract: dict, table_key: str) -> dict` — runs `schema.validate(df, lazy=True)` to collect all errors; classifies each `SchemaError` per the table below; returns `{"status": "passed"|"warning"|"breaking", "detail": [...]}`; does NOT raise — caller decides
 
 **Breaking vs non-breaking classification:**
 
@@ -127,11 +127,11 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ### Atomic write
 
-- [ ] `write_bronze(df: pd.DataFrame, dest_path: Path) -> None` — writes to `<dest_path>.tmp` then renames to `<dest_path>` atomically; creates parent directories if needed
+- [x] `write_bronze(df: pd.DataFrame, dest_path: Path) -> None` — writes to `<dest_path>.tmp` then renames to `<dest_path>` atomically; creates parent directories if needed
 
 ### Table orchestration
 
-- [ ] `load_all_bronze(data_dir: Path, output_dir: Path, contracts: dict) -> tuple[dict[str, pd.DataFrame], dict]` — iterates all 14 tables; for each table calls `validate_manifest_coverage` → `inject_missing_nullable_columns` → `validate_contract` → `write_bronze`; on any breaking violation raises `ContractBreachError` immediately; returns `(keyed_dfs, bronze_audit_section)`
+- [x] `load_all_bronze(data_dir: Path, output_dir: Path, contracts: dict) -> tuple[dict[str, pd.DataFrame], dict]` — iterates all 14 tables; for each table calls `validate_manifest_coverage` → `inject_missing_nullable_columns` → `validate_contract` → `write_bronze`; on any breaking violation raises `ContractBreachError` immediately; returns `(keyed_dfs, bronze_audit_section)`
 
 **Audit section structure:**
 ```python

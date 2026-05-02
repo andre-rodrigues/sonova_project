@@ -4,6 +4,14 @@ paths:
   - "src/tests"
 ---
 
+## Software Design Principles
+
+- [ ] Use DDD principles for code organization — separate modules by domain rather than technical details.
+- [ ] Use SOLID principles for function and class design — single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion.
+- [ ] Check for code complexity — if a function has many branches or nested logic, consider breaking it down.
+- [ ] Keep low coupling and high cohesion — functions should do one thing and do it well, with minimal dependencies on other parts of the codebase.
+- [ ] Dont' make comments in the code using real data values.
+
 ## Python Style
 
 - [ ] Type hints on every function signature — parameters and return type
@@ -24,14 +32,6 @@ paths:
 - [ ] Functions that can fail on bad data raise `ValueError` with a clear message
   including the offending value (but never a PII value)
 - [ ] Maximum function length: 40 lines. Refactor if exceeded.
-- [ ] Be mindful complexity — if a function has many branches or nested logic, consider breaking it down.
-- [ ] Keep low coupling and high cohesion — functions should do one thing and do it well, with minimal dependencies on other parts of the codebase.
-
----
-
-## Object-Oriented Design
-
-- [ ] Use SOLID principles if classes are needed, but prefer functional design for transformations and checks.
 
 ---
 

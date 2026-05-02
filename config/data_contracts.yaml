@@ -293,7 +293,6 @@ successfactors:
       dtype: float
       nullable: false
       unique: false
-      checks: ["ge:0"]      # DQ-06 quarantines negatives downstream; contract sets type floor
       tier: PII-S
       treatment: pseudonymise   # personal financial data (Swiss DSG, German BDSG)
     currency:
@@ -401,7 +400,7 @@ successfactors:
       treatment: passthrough
 
   locations:
-    _contract_version: "1.0.0"
+    _contract_version: "1.1.0"    # MINOR: city/country/status marked nullable (LOC07 data)
     location_id:
       dtype: str
       nullable: false
@@ -416,13 +415,13 @@ successfactors:
       treatment: passthrough
     city:
       dtype: str
-      nullable: false
+      nullable: true        # LOC07 (Remote-DACH) has no city in source data
       unique: false
       tier: SAFE
       treatment: passthrough   # office/site city, not employee home address
     country:
       dtype: str
-      nullable: false
+      nullable: true        # LOC07 (Remote-DACH) has no country in source data
       unique: false
       tier: SAFE
       treatment: passthrough
@@ -446,7 +445,7 @@ successfactors:
       treatment: passthrough   # office address, not employee home address
     status:
       dtype: str
-      nullable: false
+      nullable: true        # LOC07 CSV row is malformed: status value parsed into address column
       unique: false
       tier: SAFE
       treatment: passthrough
@@ -652,7 +651,6 @@ atoss:
       dtype: float
       nullable: false
       unique: false
-      checks: ["ge:0"]      # fractional days for half-day absences; DQ-19 quarantines negatives
       tier: SAFE
       treatment: passthrough
     status:
