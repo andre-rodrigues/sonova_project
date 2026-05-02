@@ -6,7 +6,7 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 ---
 # Implementation Plan — People Analytics ETL Pipeline
 
-**Status:** Phases 0–2 complete. Phase 3 next.
+**Status:** Phases 0–4 complete. Phase 9 governance/DQ tests complete. Phase 5 next.
 **Why:** Technical assessment for Lead Data Engineer role. GDPR-sensitive HR data from 3 systems → medallion-layered analytical output (Bronze → Silver → Gold).
 
 **How to apply:** At the start of each session, read this file, find the first unchecked item in the current phase, and implement it. Mark `[x]` as you complete each item. Do not skip phases — each builds on the last.
@@ -150,11 +150,11 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ## Phase 3 — Governance Module
 
-- [ ] `load_hmac_secret() -> bytes` — reads `PIPELINE_HMAC_SECRET` env var; raises `EnvironmentError` if missing; logs first 4 characters as fingerprint (never the full secret)
-- [ ] `pseudonymise(value: str, secret: bytes) -> str` — `hmac.new(secret, value.encode(), sha256).hexdigest()[:16]`
-- [ ] `redact_free_text(text: str) -> tuple[str, int]` — applies all 7 REDACTION_PATTERNS, returns `(redacted_text, n_replacements)`
-- [ ] `apply_field_classification(df: pd.DataFrame, table_key: str, contracts: dict, secret: bytes, layer: str) -> pd.DataFrame` — reads treatment from `config/data_contracts.yaml`; drops PII-SC columns for internal layer; pseudonymises PII-S columns; generalises DOB → birth_year (int)
-- [ ] `validate_manifest_coverage(df: pd.DataFrame, table_key: str, contracts: dict) -> None` — raises `ValueError` for any column not declared in the contract (`_ingested_at` and `_source_file` are exempt)
+- [x] `load_hmac_secret() -> bytes` — reads `PIPELINE_HMAC_SECRET` env var; raises `EnvironmentError` if missing; logs first 4 characters as fingerprint (never the full secret)
+- [x] `pseudonymise(value: str, secret: bytes) -> str` — `hmac.new(secret, value.encode(), sha256).hexdigest()[:16]`
+- [x] `redact_free_text(text: str) -> tuple[str, int]` — applies all 7 REDACTION_PATTERNS, returns `(redacted_text, n_replacements)`
+- [x] `apply_field_classification(df: pd.DataFrame, table_key: str, contracts: dict, secret: bytes, layer: str) -> pd.DataFrame` — reads treatment from `config/data_contracts.yaml`; drops PII-SC columns for internal layer; pseudonymises PII-S columns; generalises DOB → birth_year (int)
+- [x] `validate_manifest_coverage(df: pd.DataFrame, table_key: str, contracts: dict) -> None` — raises `ValueError` for any column not declared in the contract (`_ingested_at` and `_source_file` are exempt)
 
 **REDACTION_PATTERNS** (7 patterns from `rules/02-governance.md`): ahv_number, uk_ni, french_ssn, email_address, iban, ins_ref, bank_account
 
@@ -167,39 +167,39 @@ Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_
 
 **Single-table checks — unit-tested in `tests/dq/`:**
 
-- [ ] DQ-01: `check_dq01_duplicate_employee_id` — keep first; quarantine subsequent EMP003 dup
-- [ ] DQ-02: `check_dq02_future_hire_date` — hire_date > today → quarantine
-- [ ] DQ-03: `check_dq03_implausible_dob` — DOB year > (now-16) → flag (don't quarantine unless > today)
-- [ ] DQ-04: `check_dq04_ancient_dob` — DOB < 1900-01-02 → quarantine
-- [ ] DQ-06: `check_dq06_negative_salary` — base_salary < 0 → quarantine
-- [ ] DQ-07: `check_dq07_zero_salary_null_grade` — salary=0 AND comp_grade IS NULL → quarantine
-- [ ] DQ-08: `check_dq08_invalid_email` — contact_value fails regex when type=Email → nullify; keep
-- [ ] DQ-09: `check_dq09_invalid_phone` — blank/INVALID_NUMBER/+00... → nullify; keep
-- [ ] DQ-10: `check_dq10_duplicate_contact` — dup contact for same employee → keep lower ID; quarantine dup
-- [ ] DQ-12: `check_dq12_overlapping_jobs` — overlapping effective ranges → quarantine earlier; keep latest
-- [ ] DQ-15: `check_dq15_duplicate_ticket` — TKT019=TKT001 → quarantine higher-numbered
-- [ ] DQ-19: `check_dq19_inverted_absence_dates` — end_date < start_date OR days_requested < 0 → quarantine
-- [ ] DQ-20: `check_dq20_duplicate_time_entry` — TE049=TE001 → quarantine higher
-- [ ] DQ-21: `check_dq21_overnight_time_entry` — clock_out < clock_in → flag dq_flag_overnight=True; keep
-- [ ] DQ-22: `check_dq22_gender_standardisation` — Male→M, Female→F, blank→Unknown; no quarantine
-- [ ] DQ-23: `check_dq23_status_vs_termination` — past termination_date + status≠Terminated → correct; log
+- [x] DQ-01: `check_dq01_duplicate_employee_id` — keep first; quarantine subsequent EMP003 dup
+- [x] DQ-02: `check_dq02_future_hire_date` — hire_date > today → quarantine
+- [x] DQ-03: `check_dq03_implausible_dob` — DOB year > (now-16) → flag (don't quarantine unless > today)
+- [x] DQ-04: `check_dq04_ancient_dob` — DOB < 1900-01-02 → quarantine
+- [x] DQ-06: `check_dq06_negative_salary` — base_salary < 0 → quarantine
+- [x] DQ-07: `check_dq07_zero_salary_null_grade` — salary=0 AND comp_grade IS NULL → quarantine
+- [x] DQ-08: `check_dq08_invalid_email` — contact_value fails regex when type=Email → nullify; keep
+- [x] DQ-09: `check_dq09_invalid_phone` — blank/INVALID_NUMBER/+00... → nullify; keep
+- [x] DQ-10: `check_dq10_duplicate_contact` — dup contact for same employee → keep lower ID; quarantine dup
+- [x] DQ-12: `check_dq12_overlapping_jobs` — overlapping effective ranges → quarantine earlier; keep latest
+- [x] DQ-15: `check_dq15_duplicate_ticket` — TKT019=TKT001 → quarantine higher-numbered
+- [x] DQ-19: `check_dq19_inverted_absence_dates` — end_date < start_date OR days_requested < 0 → quarantine
+- [x] DQ-20: `check_dq20_duplicate_time_entry` — TE049=TE001 → quarantine higher
+- [x] DQ-21: `check_dq21_overnight_time_entry` — clock_out < clock_in → flag dq_flag_overnight=True; keep
+- [x] DQ-22: `check_dq22_gender_standardisation` — Male→M, Female→F, blank→Unknown; no quarantine
+- [x] DQ-23: `check_dq23_status_vs_termination` — past termination_date + status≠Terminated → correct; log
 
 **Cross-table checks — implemented in pipeline, no unit tests in `tests/dq/`:**
 
 > Per `rules/04-testing.md`, integration tests are avoided for now. These checks are implemented in
 > `dq_checks.py` and run in `pipeline.py`, but are covered only by the smoke test in `test_integration.py`.
 
-- [ ] DQ-05: `check_dq05_ghost_employee_personal(personal_df, employees_df)` — employee_id not in employees → quarantine
-- [ ] DQ-11: `check_dq11_orphan_manager(job_df, employees_df)` — nullify manager_id; keep row
-- [ ] DQ-13: `check_dq13_orphan_parent_dept(dept_df)` — nullify parent_department_id; keep
-- [ ] DQ-14: `check_dq14_orphan_dept_manager(dept_df, employees_df)` — nullify; keep
-- [ ] DQ-16: `check_dq16_orphan_ticket_caller(tickets_df, employees_df)` — quarantine TKT013
-- [ ] DQ-17: `check_dq17_orphan_ticket_comment(comments_df, tickets_df)` — quarantine CMT025
-- [ ] DQ-18: `check_dq18_orphan_absence_type(absence_df, absence_types_df)` — quarantine ABS022
-- [ ] DQ-24: `check_dq24_post_termination_entries(time_df, employees_df)` — flag post_termination=True
-- [ ] DQ-25: `check_dq25_sentinel_records(df, sentinel_ids)` — quarantine EMP023/888/999 rows
+- [x] DQ-05: `check_dq05_ghost_employee_personal(personal_df, employees_df)` — employee_id not in employees → quarantine
+- [x] DQ-11: `check_dq11_orphan_manager(job_df, employees_df)` — nullify manager_id; keep row
+- [x] DQ-13: `check_dq13_orphan_parent_dept(dept_df)` — nullify parent_department_id; keep
+- [x] DQ-14: `check_dq14_orphan_dept_manager(dept_df, employees_df)` — nullify; keep
+- [x] DQ-16: `check_dq16_orphan_ticket_caller(tickets_df, employees_df)` — quarantine TKT013
+- [x] DQ-17: `check_dq17_orphan_ticket_comment(comments_df, tickets_df)` — quarantine CMT025
+- [x] DQ-18: `check_dq18_orphan_absence_type(absence_df, absence_types_df)` — quarantine ABS022
+- [x] DQ-24: `check_dq24_post_termination_entries(time_df, employees_df)` — flag post_termination=True
+- [x] DQ-25: `check_dq25_sentinel_records(df, sentinel_ids)` — quarantine EMP023/888/999 rows
 
-- [ ] `run_all_checks(bronze: dict) -> tuple[dict, dict]` — runs all single-table checks in sequence; calls cross-table checks using the bronze keyed dict; returns `(clean_dfs, quarantine_dfs)`; writes quarantine parquet files to `output/quarantine/<table>_quarantine.parquet`
+- [x] `run_all_checks(bronze: dict) -> tuple[dict, dict]` — runs all single-table checks in sequence; calls cross-table checks using the bronze keyed dict; returns `(clean_dfs, quarantine_dfs)`; writes quarantine parquet files to `output/quarantine/<table>_quarantine.parquet`
 
 ---
 
@@ -281,20 +281,20 @@ Uses DuckDB in-memory to aggregate from silver Parquet files.
 ## Phase 9 — Tests
 
 ### tests/conftest.py
-- [ ] Shared fixtures: `employees_clean`, `employees_with_duplicate_pk`, `employees_with_future_hire_date`, `compensation_with_negative_salary`, `employee_personal_with_pii`, `tickets_with_pii_in_description`, `absence_requests_inverted_dates`
-- [ ] Contract validation fixtures: `valid_contracts_dict` (well-formed subset), `contracts_missing_dtype`, `contracts_missing_contract_version`, `df_with_undeclared_column`, `df_with_missing_nullable_column`, `df_with_missing_required_column`
+- [x] Shared fixtures: `employees_clean`, `employees_with_duplicate_pk`, `employees_with_future_hire_date`, `compensation_with_negative_salary`, `employee_personal_with_pii`, `tickets_with_pii_in_description`, `absence_requests_inverted_dates`
+- [ ] Contract validation fixtures: `valid_contracts_dict` (well-formed subset), `contracts_missing_dtype`, `contracts_missing_contract_version`, `df_with_undeclared_column`, `df_with_missing_nullable_column`, `df_with_missing_required_column` (deferred to test_bronze.py phase)
 
 ### tests/gdpr/
-- [ ] `test_pseudonymisation.py` — deterministic, different-secrets-differ, no-raw-value, secret-required
-- [ ] `test_redaction.py` — ahv, uk_ni, email, french_ssn, no-false-positives
-- [ ] `test_pii_exclusion.py` — pii_fields_absent_from_internal, sc_fields_absent_from_gold, unknown_column_raises
-- [ ] `test_access_control.py` — bronze 700, restricted 700, internal 750, gold 755
+- [x] `test_pseudonymisation.py` — deterministic, different-secrets-differ, no-raw-value, secret-required
+- [x] `test_redaction.py` — ahv, uk_ni, email, french_ssn, no-false-positives
+- [x] `test_pii_exclusion.py` — pii_fields_absent_from_internal, sc_fields_absent_from_gold, unknown_column_raises
+- [x] `test_access_control.py` — bronze 700, restricted 700, internal 750, gold 755
 
 ### tests/dq/
-- [ ] `test_duplicates.py` — DQ-01, DQ-10, DQ-15, DQ-20
-- [ ] `test_domain_values.py` — DQ-02, DQ-03, DQ-04, DQ-06, DQ-07, DQ-08, DQ-09, DQ-19, DQ-21
-- [ ] `test_standardisation.py` — DQ-22
-- [ ] `test_temporal_consistency.py` — DQ-12, DQ-23
+- [x] `test_duplicates.py` — DQ-01, DQ-10, DQ-15, DQ-20
+- [x] `test_domain_values.py` — DQ-02, DQ-03, DQ-04, DQ-06, DQ-07, DQ-08, DQ-09, DQ-19, DQ-21
+- [x] `test_standardisation.py` — DQ-22
+- [x] `test_temporal_consistency.py` — DQ-12, DQ-23
 
 > DQ-05, DQ-11, DQ-13, DQ-14, DQ-16, DQ-17, DQ-18, DQ-24, DQ-25 are cross-table checks.
 > They are implemented in `dq_checks.py` but have **no unit tests here**.
