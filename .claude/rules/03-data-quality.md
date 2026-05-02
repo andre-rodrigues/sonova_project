@@ -26,18 +26,6 @@ Every data quality check must:
 
 ## Rule Definitions
 
-### Referential Integrity — tested at Integration tier (require a second table)
-
-| Rule ID | Table | Check | Treatment |
-|---------|-------|-------|-----------|
-| DQ-05 | employee_personal | `employee_id` not in `employees` (ghost record) | Quarantine |
-| DQ-11 | employee_job | `manager_id` exists in `employees.employee_id` | Nullify `manager_id`; flag; do not quarantine row |
-| DQ-13 | departments | `parent_department_id` exists in `departments.department_id` | Nullify; flag |
-| DQ-14 | departments | `manager_employee_id` exists in `employees.employee_id` | Nullify; flag |
-| DQ-16 | tickets | `caller_employee_id` exists in `employees.employee_id` | Quarantine ticket |
-| DQ-17 | ticket_comments | `ticket_id` exists in `tickets.ticket_id` | Quarantine comment |
-| DQ-18 | absence_requests | `absence_type_id` exists in `absence_types.absence_type_id` | Quarantine request |
-
 ### Primary Key / Duplicate Violations — tested at Unit tier
 
 | Rule ID | Table | Check | Treatment |
@@ -80,6 +68,28 @@ Every data quality check must:
 |---------|--------|-------|-----------|
 | DQ-24 | employees + time_entries | Time entries after `termination_date` | Flag `post_termination=True` in fact; exclude from active headcount |
 | DQ-25 | employees | Sentinel/test records (EMP023, EMP888, EMP999) | Quarantine all related rows across all tables |
+
+---
+
+## GDPR Test Requirements
+
+### Pseudonymisation
+- [ ] `test_pseudonymise_is_deterministic` — same input → same output
+- [ ] `test_pseudonymise_different_secrets_differ` — different secret → different output
+- [ ] `test_pseudonymise_no_raw_value_in_output` — raw PII value does not appear in output
+- [ ] `test_hmac_secret_required` — pipeline raises if env var not set
+
+### Redaction
+- [ ] `test_redact_ahv_number` — Swiss AHV pattern is redacted
+- [ ] `test_redact_uk_ni` — UK NI pattern is redacted
+- [ ] `test_redact_email` — email address is redacted
+- [ ] `test_redact_french_ssn` — French SSN pattern is redacted
+- [ ] `test_redact_no_false_positives` — clean text is not modified
+
+### PII Exclusion
+- [ ] `test_pii_fields_absent_from_silver_internal` — parametrised over all PII-S/SC fields
+- [ ] `test_pii_sc_fields_absent_from_gold` — parametrised over all PII-SC fields
+- [ ] `test_unknown_column_raises` — column not in manifest raises ValueError
 
 ---
 

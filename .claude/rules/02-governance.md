@@ -16,26 +16,6 @@
 | Indirect identifier | IND | Pseudonymise employee_id spine | internal (via surrogate key) |
 | Safe | SAFE | Pass through | internal + gold |
 
-### Fields by Tier
-
-**PII-SC (special category — GDPR Art. 9):**
-- `employee_personal.gender`
-- `employee_personal.nationality`
-- `employee_personal.marital_status`
-- `absence_requests.absence_type_id` where type is AT02/AT04/AT05/AT08
-- `absence_requests.notes` (free-text, health leak risk)
-
-**PII-S (sensitive):**
-- `employee_personal.national_id` + `national_id_type`
-- `employee_compensation.base_salary`, `bonus_target_pct`, `comp_grade`
-- `tickets.description` (confirmed AHV/NI/insurance leaks)
-- `ticket_comments.comment_text` (confirmed SSN/bank/address/minor leaks)
-
-**PII (standard):**
-- `employee_personal.first_name`, `last_name`, `date_of_birth`
-- `employee_contact.contact_value` (email, phone)
-- `employees.user_id`
-
 ---
 
 ## PII Handling Rules
@@ -44,8 +24,10 @@
 
 - [ ] Never log PII field values at any log level
 - [ ] Never include PII in exception messages or stack traces
-- [ ] Never write PII-S or PII-SC fields to `silver/internal/` or `gold/`
+- [ ] Never write plain PII values to `silver/internal` or `gold/`
 - [ ] All PII treatment decisions are driven by `config/data_contracts.yaml` — not hardcoded
+- [ ] `employee_id` and other primary keys are pseudonymised in `silver/internal` via surrogate key;
+  the mapping between surrogate keys and primary keys lives only in `silver/restricted/`
 
 ### HMAC Pseudonymisation
 
@@ -55,8 +37,6 @@
 - [ ] Raise an error at pipeline start if the secret is not set
 - [ ] Log only the first 4 characters of the secret as a fingerprint in the audit log
 - [ ] Apply pseudonymisation consistently — same input always yields same output within a run
-- [ ] `employee_id` (the cross-system spine) is pseudonymised in `silver/internal/` via surrogate key;
-  the mapping between `employee_sk` and `employee_id` lives only in `silver/restricted/`
 
 ### Free-Text Redaction
 
@@ -213,19 +193,15 @@ For each table, the validation status records:
 
 ## Access Control Rules
 
-Output directories must have the following permission levels set after each successful run:
-
 | Directory | Permission | Rationale |
 |-----------|-----------|-----------|
-| `output/bronze/` | 700 (owner read/write/execute only) | Non-sensitive raw data; no group access |
-| `output/silver/restricted/` | 700 (owner read/write/execute only) | Pseudonymised PII; no group access |
-| `output/silver/internal/` | 750 (owner read/write/execute, group read/execute) | Analyst-safe data; group readable |
-| `output/gold/` | 755 (owner/group/other read/execute) | Aggregated; no individual records |
-| `output/quarantine/` | 700 (owner read/write/execute only) | Rejected data; no group access |
+| `output/bronze/` | (owner read/write) | sensitive raw data; no group access |
+| `output/silver/restricted/` | (owner read/write) | Pseudonymised PII; no group access |
+| `output/silver/internal/` | (owner read/write, group read-only) | Analyst-safe data; group readable |
+| `output/gold/` | (owner read/write, group/other read-only) | Aggregated; no individual records |
+| `output/quarantine/` | (owner read/write) | Rejected data; no group access |
 
-- [ ] Permission enforcement is the **last step** of every pipeline run
-- [ ] Permission enforcement must succeed or pipeline exits with non-zero code
-- [ ] Document in README that in production these map to object-store bucket policies / RBAC
+- These access control rules are just informative for the moment.
 
 ---
 
@@ -245,11 +221,10 @@ Every pipeline run produces an audit log containing:
 **Core metadata:**
 - Unique run ID
 - Start and completion timestamps (UTC)
-- HMAC secret fingerprint (first 4 characters only)
 
 **Per-layer details:**
-- **Bronze:** count of tables loaded, row counts per table, contract version per table, validation status
-- **Silver:** data quality rules applied, rows quarantined per table, fields pseudonymised, fields excluded, redaction counts
+- **Bronze:** table loaded, row counts per table, contract version for the table, validation status
+- **Silver:** table loaded, data quality rules applied, rows quarantined for the table, fields pseudonymised, fields excluded, redaction counts
 - **Gold:** views materialised
 
 **Error information:**
