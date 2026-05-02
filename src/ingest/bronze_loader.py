@@ -7,7 +7,10 @@ from types import MappingProxyType
 from typing import Final
 
 import pandas as pd
-import pandera as pa
+try:
+    import pandera.pandas as pa
+except ImportError:
+    import pandera as pa  # type: ignore[no-redef]
 from pandera.errors import SchemaErrors
 
 logger = logging.getLogger(__name__)
@@ -350,6 +353,8 @@ def load_all_bronze(
         dest = output_dir / "bronze" / system / f"{table}.parquet"
         if _is_up_to_date(csv_path, dest):
             logger.info("Bronze %s/%s: up to date — skipping", system, table)
+            table_key = f"{system}/{table}"
+            keyed_dfs[table_key] = pd.read_parquet(dest)
             continue
         table_key, df, entry = _load_one_table(csv_path, output_dir, contracts)
         keyed_dfs[table_key] = df
