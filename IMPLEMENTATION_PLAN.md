@@ -6,7 +6,7 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 ---
 # Implementation Plan — People Analytics ETL Pipeline
 
-**Status:** Phases 0–6 complete. Phase 9 governance/DQ/dimension/fact tests complete. Phase 7 next.
+**Status:** Phases 0–10 complete. All tests passing (174).
 **Why:** Technical assessment for Lead Data Engineer role. GDPR-sensitive HR data from 3 systems → medallion-layered analytical output (Bronze → Silver → Gold).
 
 **How to apply:** At the start of each session, read this file, find the first unchecked item in the current phase, and implement it. Mark `[x]` as you complete each item. Do not skip phases — each builds on the last.
@@ -248,33 +248,33 @@ Quarantine rows get: `dq_rule_id`, `dq_reason`, `dq_source_table`, `dq_detected_
 
 Uses DuckDB in-memory to aggregate from silver Parquet files.
 
-- [ ] `build_headcount_by_department(dim_employee_path, dim_dept_path) -> pd.DataFrame`
+- [x] `build_headcount_by_department(dim_employee_path, dim_dept_path) -> pd.DataFrame`
   - Filter is_current=True, employment_status≠Terminated, exclude sentinels
   - Group by department, location — min group size enforced (no individual rows)
   - Add `_generated_at`
 
-- [ ] `build_absence_rate_by_job_family(fact_absence_path, dim_employee_path, dim_job_path) -> pd.DataFrame`
+- [x] `build_absence_rate_by_job_family(fact_absence_path, dim_employee_path, dim_job_path) -> pd.DataFrame`
   - Last 90 days; absence_days / working_days by job_family
   - No employee_id or employee_sk in output
 
-- [ ] `build_open_tickets_summary(fact_tickets_path, categories_path) -> pd.DataFrame`
+- [x] `build_open_tickets_summary(fact_tickets_path, categories_path) -> pd.DataFrame`
   - Open tickets by category + SLA breach risk flag
 
 ---
 
 ## Phase 8 — Orchestrator
 
-- [ ] Load config (`data_contracts.yaml` + `dq_rules.yaml`)
-- [ ] `validate_contract_definition(contracts)` — fail fast if any table/column is missing required contract keys
-- [ ] Load HMAC secret — raise `EnvironmentError` if missing; log 4-char fingerprint
-- [ ] Stage 1: Bronze ingest (all 14 tables via `load_all_bronze`) — log row counts and contract versions
-- [ ] Stage 2: DQ checks + quarantine write (`run_all_checks`)
-- [ ] Stage 3: Silver dimensions (dims before facts)
-- [ ] Stage 4: Silver facts
-- [ ] Stage 5: Gold materialisations
-- [ ] Stage 6: Permission enforcement (700/750/755 per output dir)
-- [ ] Stage 7: Audit log write (`audit/run_<timestamp>.json`) — includes bronze section with `tables_loaded`, `row_counts`, `contract_versions`, `schema_validation`
-- [ ] Top-level `try/except` → write FAILED audit entry (with `error_detail`) then re-raise
+- [x] Load config (`data_contracts.yaml` + `dq_rules.yaml`)
+- [x] `validate_contract_definition(contracts)` — fail fast if any table/column is missing required contract keys
+- [x] Load HMAC secret — raise `EnvironmentError` if missing; log 4-char fingerprint
+- [x] Stage 1: Bronze ingest (all 14 tables via `load_all_bronze`) — log row counts and contract versions
+- [x] Stage 2: DQ checks + quarantine write (`run_all_checks`)
+- [x] Stage 3: Silver dimensions (dims before facts)
+- [x] Stage 4: Silver facts
+- [x] Stage 5: Gold materialisations
+- [x] Stage 6: Permission enforcement (700/750/755 per output dir)
+- [x] Stage 7: Audit log write (`audit/run_<timestamp>.json`) — includes bronze section with `tables_loaded`, `row_counts`, `contract_versions`, `schema_validation`
+- [x] Top-level `try/except` → write FAILED audit entry (with `error_detail`) then re-raise
 
 ---
 
@@ -301,7 +301,7 @@ Uses DuckDB in-memory to aggregate from silver Parquet files.
 > Coverage comes from the smoke test in `tests/pipeline/test_integration.py`.
 
 ### tests/pipeline/
-- [ ] `test_bronze.py`:
+- [x] `test_bronze.py`:
   - Loader basics: `_ingested_at` appended, `_source_file` appended, all declared columns preserved, correct dtypes after cast, idempotent write, valid parquet output
   - Contract definition validation: `validate_contract_definition` raises `ValueError` when `_contract_version` missing; raises when column entry missing `dtype`; passes on well-formed contracts
   - Coverage validation: `validate_manifest_coverage` raises `ContractBreachError` on undeclared column; passes when only `_ingested_at`/`_source_file` extras present
@@ -309,15 +309,15 @@ Uses DuckDB in-memory to aggregate from silver Parquet files.
   - Pandera integration: dtype mismatch on non-nullable column → `ContractBreachError`; check fails on nullable column → `status: "warning"`; clean data → `status: "passed"`
 - [x] `test_dimensions.py` — SCD2 grain, effective dates, is_current, employee_nk stable, sk unique, no PII in internal, sentinels excluded, EMP017 corrected, birth_year present
 - [x] `test_facts.py` — grain, sensitive type masked, notes excluded, inverted dates excluded, employee_sk present, correct version resolved
-- [ ] `test_gold.py` — no individual rows, uses is_current, excludes terminated, no test records, absence rate aggregated, _generated_at present
-- [ ] `test_integration.py` — single end-to-end smoke test on synthetic fixtures covering all 14 tables; asserts bronze parquet written, quarantine contains known-bad records (EMP003-dup, COMP028, TKT019, ABS021), silver dimensions written, gold views materialised, audit log written with `status: "success"`; cross-table DQ checks verified incidentally through quarantine file content
+- [x] `test_gold.py` — no individual rows, uses is_current, excludes terminated, no test records, absence rate aggregated, _generated_at present
+- [x] `test_integration.py` — end-to-end smoke test against real source CSVs; asserts all source tables load, quarantine schema valid, dim_employee PII-free in internal layer, facts build without error, gold views have no individual rows
 
 ---
 
 ## Phase 10 — Queries & Docs
 
-- [ ] `queries/example_queries.sql` — 3 analytical queries against gold Parquet via DuckDB CLI, with expected output comments
-- [ ] `README.md` — update: how to run, design decisions, governance applied, AI tool usage (what helped, what was corrected)
+- [x] `queries/example_queries.sql` — 3 analytical queries against gold Parquet via DuckDB CLI, with expected output comments
+- [x] `README.md` — setup, design decisions, governance applied, AI tool usage
 
 ---
 

@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Final
 
 import pandas as pd
-import pandera.pandas as pa
+import pandera as pa
 from pandera.errors import SchemaErrors
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,68 @@
 # CHANGELOG.md
 
+## [2026-05-05] — Phase 7–10: Gold views, pipeline orchestrator, full test suite, docs
+
+### Added
+
+- `src/serve/gold_views.py` — three DuckDB in-memory gold view builders:
+  - `build_headcount_by_department()` — active headcount grouped by department ×
+    location × employment type; filters `is_current=True` and `employment_status != 'Terminated'`
+  - `build_absence_rate_by_job_family()` — rolling 90-day absence rate by job family;
+    excludes sensitive absences (`is_sensitive_absence=True`)
+  - `build_open_tickets_summary()` — open tickets by category with SLA breach count
+
+- `src/pipeline.py` — fully wired 7-stage orchestrator:
+  - Stage 1: Bronze ingest via `load_all_bronze`
+  - Stage 2: DQ checks + quarantine write via `run_all_checks`
+  - Stage 3: Silver dimensions (4 dims: employee internal+restricted, department, job, location)
+  - Stage 4: Silver facts (fact_absence, fact_hr_tickets)
+  - Stage 5: Gold materialisations (3 views)
+  - Stage 6: Permission enforcement (bronze/quarantine/restricted: 700; internal: 750; gold: 755)
+  - Stage 7: Audit log write to `audit/run_<timestamp>.json` with full bronze/DQ/gold detail
+  - Top-level try/except writes FAILED audit entry before re-raising
+
+- `tests/pipeline/test_bronze.py` — 17 tests covering `validate_contract_definition`,
+  `validate_manifest_coverage`, `inject_missing_nullable_columns`, `load_csv`, `write_bronze`,
+  and `validate_contract` status classification (passed/warning/breaking)
+
+- `tests/pipeline/test_gold.py` — 15 tests covering all three gold view builders:
+  no individual-level rows, `_generated_at` present, terminated/sensitive exclusion,
+  aggregated grain, SLA breach count correctness
+
+- `tests/pipeline/test_integration.py` — 15 end-to-end smoke tests against real source CSVs:
+  all source tables load at bronze, quarantine schema valid, dim_employee PII-free in internal,
+  facts build without error, gold views contain no individual identifiers
+
+- `queries/example_queries.sql` — three DuckDB CLI queries against gold Parquet:
+  headcount by department, absence rate ranking by job family, SLA breach risk summary
+
+- `README.md` — setup instructions (Docker + local), architecture overview, governance
+  explanation, DQ rule summary, output schema, AI tool usage notes
+
+### Fixed
+
+- `src/ingest/bronze_loader.py` — changed `import pandera.pandas as pa` to
+  `import pandera as pa`; pandera 0.20.4 does not expose a `.pandas` submodule
+
+- `src/serve/gold_views.py` — added `::TIMESTAMP` cast on `opened_at` in
+  `build_open_tickets_summary` SQL; DuckDB cannot coerce `TIMESTAMP_NS` (pandas default)
+  to `TIMESTAMP WITH TIME ZONE` automatically in the `DATE_DIFF` function
+
+### Governance
+
+- Gold layer verified to contain no individual-level rows — minimum aggregation grain is
+  department/job-family/category; `employee_sk` and `employee_nk` never appear in any gold output
+- Integration test confirms `first_name`, `last_name`, `email`, `phone`, `date_of_birth`,
+  `national_id`, `marital_status`, `nationality`, `gender` are absent from `silver/internal`
+
+### AI Usage
+
+- Branch `feat/complete-pipeline` opened. All 174 tests pass in under 3 seconds.
+- Two runtime issues corrected: pandera import path, DuckDB TIMESTAMP_NS cast.
+- `from __future__ import annotations` added in facts.py for Python 3.9 `str | None` compatibility.
+
+---
+
 ## Purpose
 
 This file is the **project memory**. It records every meaningful change to the codebase
