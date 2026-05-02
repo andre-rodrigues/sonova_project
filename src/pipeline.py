@@ -10,20 +10,16 @@ Stage order:
   7. Audit log write
 """
 
-from __future__ import annotations
-
-import json
 import logging
-import os
-import stat
 import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-import duckdb
 import pandas as pd
 import yaml
+
+from src.utils import write_audit, write_parquet
 
 from src.ingest.bronze_loader import (
     ContractBreachError,
@@ -66,29 +62,6 @@ _DIR_PERMISSIONS: dict[str, int] = {
     "quarantine": 0o700,
 }
 
-
-# ---------------------------------------------------------------------------
-# I/O helpers
-# ---------------------------------------------------------------------------
-
-def _write_parquet(df: pd.DataFrame, path: Path) -> None:
-    """Write DataFrame to Parquet using DuckDB COPY TO."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect()
-    try:
-        con.register("_df", df)
-        con.execute(f"COPY _df TO '{path}' (FORMAT PARQUET)")
-    finally:
-        con.close()
-
-
-def _write_audit(run_id: str, started_at: str, payload: dict) -> None:
-    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = started_at[:19].replace(":", "").replace("-", "").replace("T", "T")
-    path = AUDIT_DIR / f"run_{ts}.json"
-    entry = {"run_id": run_id, "started_at": started_at, **payload}
-    path.write_text(json.dumps(entry, indent=2, default=str))
-    logger.info("Audit log written: %s", path.name)
 
 
 # ---------------------------------------------------------------------------
@@ -143,18 +116,18 @@ def _stage3_silver_dims(
         clean_dfs.get("successfactors/employee_personal", pd.DataFrame()),
         contracts, secret,
     )
-    _write_parquet(dim_emp_res, restricted / "dim_employee.parquet")
+    write_parquet(dim_emp_res, restricted / "dim_employee.parquet")
     dim_emp_int = build_internal_dim_employee(dim_emp_res)
-    _write_parquet(dim_emp_int, internal / "dim_employee.parquet")
+    write_parquet(dim_emp_int, internal / "dim_employee.parquet")
 
     dim_dept = build_dim_department(clean_dfs["successfactors/departments"], contracts)
-    _write_parquet(dim_dept, internal / "dim_department.parquet")
+    write_parquet(dim_dept, internal / "dim_department.parquet")
 
     dim_job = build_dim_job(clean_dfs["successfactors/job_codes"], contracts)
-    _write_parquet(dim_job, internal / "dim_job.parquet")
+    write_parquet(dim_job, internal / "dim_job.parquet")
 
     dim_loc = build_dim_location(clean_dfs["successfactors/locations"], contracts)
-    _write_parquet(dim_loc, internal / "dim_location.parquet")
+    write_parquet(dim_loc, internal / "dim_location.parquet")
 
     logger.info("Stage 3: Silver dimensions — complete (4 dims written)")
     return {
@@ -181,7 +154,7 @@ def _stage4_silver_facts(
         clean_dfs.get("atoss/absence_requests", pd.DataFrame()),
         dim_employee, sensitive_ids,
     )
-    _write_parquet(fact_abs, internal / "fact_absence.parquet")
+    write_parquet(fact_abs, internal / "fact_absence.parquet")
 
     fact_tkt = build_fact_hr_tickets(
         clean_dfs.get("servicenow/tickets", pd.DataFrame()),
@@ -189,7 +162,7 @@ def _stage4_silver_facts(
         clean_dfs.get("servicenow/ticket_categories", pd.DataFrame()),
         dim_employee, contracts, secret,
     )
-    _write_parquet(fact_tkt, internal / "fact_hr_tickets.parquet")
+    write_parquet(fact_tkt, internal / "fact_hr_tickets.parquet")
 
     logger.info("Stage 4: Silver facts — complete (2 facts written)")
     return {
@@ -208,7 +181,7 @@ def _stage5_gold(dim_paths: dict[str, Path], fact_paths: dict[str, Path]) -> lis
     headcount = build_headcount_by_department(
         dim_paths["dim_employee"], dim_paths["dim_department"]
     )
-    _write_parquet(headcount, gold / "headcount_by_department.parquet")
+    write_parquet(headcount, gold / "headcount_by_department.parquet")
     materialised.append("headcount_by_department")
 
     if fact_paths["fact_absence"].exists():
@@ -217,15 +190,14 @@ def _stage5_gold(dim_paths: dict[str, Path], fact_paths: dict[str, Path]) -> lis
             dim_paths["dim_employee"],
             dim_paths["dim_job"],
         )
-        _write_parquet(absence_rate, gold / "absence_rate_by_job_family.parquet")
+        write_parquet(absence_rate, gold / "absence_rate_by_job_family.parquet")
         materialised.append("absence_rate_by_job_family")
 
     if fact_paths["fact_hr_tickets"].exists():
         tickets_summary = build_open_tickets_summary(
             fact_paths["fact_hr_tickets"],
-            dim_paths["dim_department"],
         )
-        _write_parquet(tickets_summary, gold / "open_tickets_summary.parquet")
+        write_parquet(tickets_summary, gold / "open_tickets_summary.parquet")
         materialised.append("open_tickets_summary")
 
     logger.info("Stage 5: Gold — complete (%d views materialised)", len(materialised))
@@ -289,16 +261,16 @@ def main() -> None:
     except (ContractBreachError, EnvironmentError) as exc:
         _mark_failed(audit, exc)
         logger.error("Pipeline failed: %s", exc)
-        _write_audit(run_id, started_at, audit)
+        write_audit(run_id, started_at, audit, AUDIT_DIR)
         sys.exit(1)
 
     except Exception as exc:
         _mark_failed(audit, exc)
         logger.error("Unexpected pipeline error", exc_info=True)
-        _write_audit(run_id, started_at, audit)
+        write_audit(run_id, started_at, audit, AUDIT_DIR)
         raise
 
-    _write_audit(run_id, started_at, audit)
+    write_audit(run_id, started_at, audit, AUDIT_DIR)
 
 
 if __name__ == "__main__":

@@ -5,8 +5,6 @@ produces the expected output layers and that no PII leaks into gold/internal.
 Relies on PIPELINE_HMAC_SECRET being set (monkeypatched in the fixture).
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 
@@ -30,6 +28,8 @@ from src.serve.gold_views import (
 )
 
 import yaml
+
+from src.utils import write_parquet
 
 _ROOT = Path(__file__).resolve().parents[2]
 _DATA_DIR = _ROOT / "data"
@@ -192,17 +192,13 @@ def test_fact_tickets_builds(clean_dfs, dim_employee_internal, contracts):
 # Gold smoke tests
 # ---------------------------------------------------------------------------
 
-def _write_parquet(df: pd.DataFrame, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(path, index=False)
-
 
 def test_gold_headcount_no_individual_rows(clean_dfs, dim_employee_internal, contracts, tmp_path):
     dept_df = build_dim_department(clean_dfs["successfactors/departments"], contracts)
     emp_path = tmp_path / "dim_employee.parquet"
     dept_path = tmp_path / "dim_department.parquet"
-    _write_parquet(dim_employee_internal, emp_path)
-    _write_parquet(dept_df, dept_path)
+    write_parquet(dim_employee_internal, emp_path)
+    write_parquet(dept_df, dept_path)
 
     result = build_headcount_by_department(emp_path, dept_path)
     assert "employee_sk" not in result.columns
@@ -214,8 +210,8 @@ def test_gold_headcount_generated_at_present(clean_dfs, dim_employee_internal, c
     dept_df = build_dim_department(clean_dfs["successfactors/departments"], contracts)
     emp_path = tmp_path / "dim_employee.parquet"
     dept_path = tmp_path / "dim_department.parquet"
-    _write_parquet(dim_employee_internal, emp_path)
-    _write_parquet(dept_df, dept_path)
+    write_parquet(dim_employee_internal, emp_path)
+    write_parquet(dept_df, dept_path)
 
     result = build_headcount_by_department(emp_path, dept_path)
     assert "_generated_at" in result.columns
@@ -230,9 +226,9 @@ def test_gold_absence_rate_builds(clean_dfs, dim_employee_internal, contracts, d
     emp_path = tmp_path / "dim_employee.parquet"
     job_path = tmp_path / "dim_job.parquet"
     fact_path = tmp_path / "fact_absence.parquet"
-    _write_parquet(dim_employee_internal, emp_path)
-    _write_parquet(job_df, job_path)
-    _write_parquet(fact_abs, fact_path)
+    write_parquet(dim_employee_internal, emp_path)
+    write_parquet(job_df, job_path)
+    write_parquet(fact_abs, fact_path)
 
     result = build_absence_rate_by_job_family(fact_path, emp_path, job_path)
     assert "employee_sk" not in result.columns
@@ -249,10 +245,10 @@ def test_gold_open_tickets_builds(clean_dfs, dim_employee_internal, contracts, d
     fact_tkt = build_fact_hr_tickets(tickets, comments, categories, dim_employee_internal, contracts, _HMAC_SECRET)
     dept_path = tmp_path / "dim_department.parquet"
     fact_path = tmp_path / "fact_hr_tickets.parquet"
-    _write_parquet(dept_df, dept_path)
-    _write_parquet(fact_tkt, fact_path)
+    write_parquet(dept_df, dept_path)
+    write_parquet(fact_tkt, fact_path)
 
-    result = build_open_tickets_summary(fact_path, dept_path)
+    result = build_open_tickets_summary(fact_path)
     assert "caller_employee_sk" not in result.columns
     assert "_generated_at" in result.columns
     assert "open_ticket_count" in result.columns

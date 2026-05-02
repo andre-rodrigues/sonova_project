@@ -5,8 +5,6 @@ to department / job-family / category grain, and returns a DataFrame.
 No individual-level rows are ever written to the gold layer.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pandas as pd
@@ -80,8 +78,7 @@ def build_absence_rate_by_job_family(
 
 
 def build_open_tickets_summary(
-    fact_tickets_path: Path,
-    dim_dept_path: Path,
+    fact_tickets_path: Path
 ) -> pd.DataFrame:
     """Open HR tickets grouped by category with SLA breach risk flag.
 

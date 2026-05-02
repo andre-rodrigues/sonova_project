@@ -190,18 +190,18 @@ def test_absence_rate_columns_present(fact_absence_path, dim_employee_path, dim_
 # ---------------------------------------------------------------------------
 
 def test_tickets_summary_no_individual_rows(fact_tickets_path, dim_department_path):
-    result = build_open_tickets_summary(fact_tickets_path, dim_department_path)
+    result = build_open_tickets_summary(fact_tickets_path)
     assert "caller_employee_sk" not in result.columns
     assert "ticket_id" not in result.columns
 
 
 def test_tickets_summary_generated_at_present(fact_tickets_path, dim_department_path):
-    result = build_open_tickets_summary(fact_tickets_path, dim_department_path)
+    result = build_open_tickets_summary(fact_tickets_path)
     assert "_generated_at" in result.columns
 
 
 def test_tickets_summary_sla_breach_count(fact_tickets_path, dim_department_path):
-    result = build_open_tickets_summary(fact_tickets_path, dim_department_path)
+    result = build_open_tickets_summary(fact_tickets_path)
     assert "sla_breach_count" in result.columns
     # TKT002 opened 100 days ago, sla_hours=48 — must be breached
     payroll_row = result[result["category_name"] == "Payroll"]
@@ -209,12 +209,12 @@ def test_tickets_summary_sla_breach_count(fact_tickets_path, dim_department_path
 
 
 def test_tickets_summary_open_only(fact_tickets_path, dim_department_path):
-    result = build_open_tickets_summary(fact_tickets_path, dim_department_path)
+    result = build_open_tickets_summary(fact_tickets_path)
     total = result["open_ticket_count"].sum()
     assert total == 3  # all 3 tickets have state='Open'
 
 
 def test_tickets_summary_grain_is_category(fact_tickets_path, dim_department_path):
-    result = build_open_tickets_summary(fact_tickets_path, dim_department_path)
+    result = build_open_tickets_summary(fact_tickets_path)
     assert "category_name" in result.columns
     assert "open_ticket_count" in result.columns

@@ -4,8 +4,6 @@ All public functions are pure transformations: they accept DataFrames and
 return DataFrames with no file I/O, logging, or side effects.
 """
 
-from __future__ import annotations
-
 import uuid
 
 import pandas as pd
