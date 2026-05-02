@@ -47,12 +47,12 @@ originSessionId: f192df5a-dcb4-4276-b1a2-b9384f2b7861
 
 ## Phase 1 — Config Files
 
-- [ ] `config/field_classification.yaml` — every column from all 14 source tables classified by tier (PII-SC / PII-S / PII / IND / SAFE) and treatment. Key entries:
+- [x] `config/field_classification.yaml` — every column from all 14 source tables classified by tier (PII-SC / PII-S / PII / IND / SAFE) and treatment. Key entries:
   - `employee_personal`: national_id→PII-S/pseudonymise, date_of_birth→PII/generalise_to_year, gender/nationality/marital_status→PII-SC/exclude
   - `employee_compensation`: base_salary/bonus_target_pct/comp_grade→PII-S/pseudonymise (write to restricted only)
   - `tickets.description` / `ticket_comments.comment_text` / `absence_requests.notes` → PII-S/redact
   - `employees.employee_id` → IND/passthrough (pseudonymised via surrogate key)
-- [ ] `config/dq_rules.yaml` — thresholds: min_hire_year, implausible_dob_cutoff (1900-01-02), min_working_age (16), sentinel_employee_ids, sentinel_absence_types
+- [x] `config/dq_rules.yaml` — thresholds: min_hire_year, implausible_dob_cutoff (1900-01-02), min_working_age (16), sentinel_employee_ids, sentinel_absence_types
 
 ---
 

@@ -1,0 +1,35 @@
+# dq_rules.yaml
+#
+# Thresholds and reference values used by src/transform/dq_checks.py.
+# All DQ check functions read from this config — no hardcoded values in code.
+# Rule IDs reference rules/03-data-quality.md (DQ-01 through DQ-25).
+
+# DQ-04: date_of_birth before this date is implausible (quarantine)
+implausible_dob_cutoff: "1900-01-02"
+
+# DQ-03: employee younger than this (birth year > current_year - min_working_age) is flagged
+min_working_age: 16
+
+# DQ-02: hire_date more than this many days in the future is quarantined (0 = any future date)
+max_future_hire_days: 0
+
+# DQ-25: employee_id values that are test/sentinel records — quarantine all related rows
+sentinel_employee_ids:
+  - EMP023
+  - EMP888
+  - EMP999
+
+# used by fact_absence builder and DQ classification to identify health/family absence types
+sensitive_absence_type_ids:
+  - AT02   # Sick Leave
+  - AT04   # Maternity Leave
+  - AT05   # Paternity Leave
+  - AT08   # Compassionate Leave
+
+# DQ-09: phone contact_value patterns that are considered invalid (nullify, keep row)
+invalid_phone_patterns:
+  - "INVALID_NUMBER"
+  - "+00 000 0000000"
+
+# DQ-01 / DQ-10 / DQ-15 / DQ-20: which occurrence to keep on duplicate PK violations
+duplicate_keep: "first"   # keep lowest row index; quarantine subsequent
