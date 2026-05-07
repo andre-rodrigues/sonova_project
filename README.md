@@ -24,6 +24,7 @@ A local, GDPR-compliant medallion ETL pipeline that ingests HR data from three s
 ### Prerequisites
 
 - Docker and docker-compose
+- Write input data into `data/` as CSV files.
 
 ### Running with Docker
 
