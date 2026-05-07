@@ -25,6 +25,8 @@ A local, GDPR-compliant medallion ETL pipeline that ingests HR data from three s
 
 - Docker and docker-compose
 - Write input data into `data/` as CSV files.
+- Copy `.env.example` into `.env` and adjust ENVs with real values.
+  - `MB_ADMIN_PASSWORD` Must have upper and lower letters + numbers + especial character.
 
 ### Running with Docker
 

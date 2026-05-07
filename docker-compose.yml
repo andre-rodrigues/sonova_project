@@ -17,6 +17,7 @@ services:
       - ./data:/app/data:ro
       - ./output:/app/output
       - ./audit:/app/audit
+    env_file: ".env"
     environment:
       - PIPELINE_HMAC_SECRET=${PIPELINE_HMAC_SECRET}
       - CLICKHOUSE_HOST=${CLICKHOUSE_HOST}
@@ -36,6 +37,7 @@ services:
       - etl_net
     volumes:
       - .:/app
+    env_file: ".env"
     environment:
       - PIPELINE_HMAC_SECRET=${PIPELINE_HMAC_SECRET}
     command: pytest tests/ -v --cov=src --cov-report=term-missing
@@ -50,6 +52,7 @@ services:
       - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+    env_file: ".env"
     environment:
       - CLICKHOUSE_DB=${CLICKHOUSE_DATABASE}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER}
@@ -71,6 +74,7 @@ services:
     volumes:
       - ./metabase/data:/metabase-data
       - ./metabase/scripts:/scripts
+    env_file: ".env"
     environment:
       - MB_DB_TYPE=h2
       - MB_DB_FILE=/metabase-data/metabase.db
