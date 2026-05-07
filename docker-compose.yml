@@ -28,7 +28,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-    command: python -m src.pipeline
+    restart: unless-stopped
+    command: /bin/sh -c "crontab /app/crontab && python -m src.pipeline; cron -f"
 
   test:
     build: .

@@ -1,0 +1,1 @@
+0 5 * * * cd /app && python -m src.pipeline >> /app/audit/cron.log 2>&1
